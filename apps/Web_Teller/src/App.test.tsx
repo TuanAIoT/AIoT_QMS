@@ -15,6 +15,8 @@ const USER: User = {
   isActive: true,
 };
 
+const AUTH_STORAGE_KEY = 'qms-web-teller-mock-access-token';
+
 const SESSION: CounterSession = {
   id: 'session-demo-001',
   locationId: USER.locationId,
@@ -116,8 +118,14 @@ async function startSession(apiClient: WebTellerApi): Promise<void> {
 }
 
 describe(APP_NAME, () => {
-  beforeEach(() => sessionStorage.clear());
-  afterEach(() => cleanup());
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+    sessionStorage.clear();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllEnvs();
+  });
 
   it('renders the login screen', () => {
     render(<App apiClient={createMockApi()} />);
@@ -130,6 +138,30 @@ describe(APP_NAME, () => {
     await login(createMockApi());
 
     expect(screen.getByLabelText('Quầy')).toBeTruthy();
+  });
+
+  it('keeps the access token in memory by default', async () => {
+    await login(createMockApi());
+
+    expect(sessionStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it('stores the access token only when session storage is explicitly enabled', async () => {
+    vi.stubEnv('VITE_AUTH_STORAGE', 'session');
+    await login(createMockApi());
+
+    expect(sessionStorage.getItem(AUTH_STORAGE_KEY)).toBe('mock-access-token');
+  });
+
+  it('removes the session token on logout', async () => {
+    vi.stubEnv('VITE_AUTH_STORAGE', 'session');
+    await login(createMockApi());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
+
+    await screen.findByRole('heading', { name: APP_NAME });
+    expect(sessionStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
   });
 
   it('shows an error when login fails', async () => {
@@ -152,6 +184,45 @@ describe(APP_NAME, () => {
 
     await waitFor(() => expect(apiClient.queueClient.callNext).toHaveBeenCalledTimes(1));
     expect((await screen.findAllByText(TICKET.ticketNumber)).length).toBeGreaterThan(0);
+  });
+
+  it('shows a neutral current-ticket state when restoring a session without ticket data', async () => {
+    await startSession(createMockApi());
+
+    expect(await screen.findByText('Đã khôi phục ca làm việc.')).toBeTruthy();
+    expect(screen.getByText('Chưa có thông tin ticket đang xử lý.')).toBeTruthy();
+    expect(screen.queryByText('Trống')).toBeNull();
+  });
+
+  it('resolves the start-session staff identity from the logged-in user', async () => {
+    const apiClient = createMockApi();
+    const secondUser: User = {
+      ...USER,
+      id: 'user-demo-local-002',
+      username: 'demo-02',
+      displayName: 'Development Demo User 02',
+    };
+    vi.mocked(apiClient.authClient.login).mockResolvedValueOnce(
+      success({
+        accessToken: 'mock-access-token-02',
+        refreshToken: 'mock-refresh-token-02',
+        accessTokenExpiresAt: '2026-06-19T09:00:00.000Z',
+        user: secondUser,
+      }),
+    );
+    vi.mocked(apiClient.counterSessionClient.getActiveCounterSession).mockResolvedValueOnce(
+      success({ session: null }),
+    );
+    await login(apiClient);
+
+    expect(screen.getByText(`Xin chào, ${secondUser.displayName}`)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Bắt đầu ca' }));
+
+    await waitFor(() =>
+      expect(apiClient.counterSessionClient.startCounterSession).toHaveBeenCalledWith(
+        expect.objectContaining({ staffId: `staff-development-${secondUser.id}` }),
+      ),
+    );
   });
 
   it('shows an empty queue message when callNext returns null', async () => {

@@ -1,5 +1,13 @@
 import { createApiClient, type ApiClient } from '@qms/api-client';
-import type { ApiResponse, CounterSession, QueueSummary, Ticket, User } from '@qms/contracts';
+import type {
+  ApiResponse,
+  CounterSession,
+  DashboardSummaryResponse,
+  QueueSummary,
+  StaffId,
+  Ticket,
+  User,
+} from '@qms/contracts';
 import { FormEvent, useMemo, useState } from 'react';
 
 import './styles.css';
@@ -15,7 +23,18 @@ const DEMO_COUNTERS = [
   { id: 'counter-demo-001', name: 'Quầy Demo 01', serviceId: 'service-demo-001' },
   { id: 'counter-demo-002', name: 'Quầy Demo 02', serviceId: 'service-demo-002' },
 ] as const;
-const DEMO_STAFF_ID = 'staff-demo-001';
+
+function usesSessionAuthStorage(): boolean {
+  return import.meta.env.VITE_AUTH_STORAGE === 'session';
+}
+
+/**
+ * DEVELOPMENT_ONLY / BACKEND_CONFIRMATION_REQUIRED: Login does not expose staffId yet.
+ * Keep the temporary mock-user mapping in one place until Backend confirms the identity link.
+ */
+function resolveDevelopmentStaffId(user: User): StaffId {
+  return user.id === 'user-demo-local-001' ? 'staff-demo-001' : `staff-development-${user.id}`;
+}
 
 type AuthApi = Pick<ApiClient['authClient'], 'login' | 'logout'>;
 type CounterSessionApi = Pick<
@@ -57,7 +76,7 @@ function errorMessage(error: unknown): string {
 }
 
 function readStoredToken(): string | null {
-  return sessionStorage.getItem(TOKEN_STORAGE_KEY);
+  return usesSessionAuthStorage() ? sessionStorage.getItem(TOKEN_STORAGE_KEY) : null;
 }
 
 export function App({ apiClient: injectedApiClient }: AppProps) {
@@ -68,6 +87,7 @@ export function App({ apiClient: injectedApiClient }: AppProps) {
   const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null);
   const [waitingTickets, setWaitingTickets] = useState<readonly Ticket[]>([]);
   const [summary, setSummary] = useState<QueueSummary | null>(null);
+  const [isCurrentTicketUnknown, setIsCurrentTicketUnknown] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [queueMessage, setQueueMessage] = useState<string | null>(null);
@@ -98,7 +118,7 @@ export function App({ apiClient: injectedApiClient }: AppProps) {
     }
   }
 
-  async function refreshQueue(locationId: string): Promise<void> {
+  async function refreshQueue(locationId: string) {
     const waiting = unwrap(
       await apiClient.queueClient.getWaitingQueue({
         locationId,
@@ -107,11 +127,13 @@ export function App({ apiClient: injectedApiClient }: AppProps) {
     );
     setWaitingTickets(waiting.queue.items);
     setSummary(waiting.summary);
+    return waiting;
   }
 
-  async function refreshDashboard(locationId: string): Promise<void> {
+  async function refreshDashboard(locationId: string): Promise<DashboardSummaryResponse> {
     const dashboard = unwrap(await apiClient.dashboardClient.getDashboardSummary({ locationId }));
     setSummary(dashboard.queue);
+    return dashboard;
   }
 
   function handleLogin(event: FormEvent<HTMLFormElement>): void {
@@ -122,7 +144,9 @@ export function App({ apiClient: injectedApiClient }: AppProps) {
 
     void runAction('Đang đăng nhập...', async () => {
       const login = unwrap(await apiClient.authClient.login({ username, password }));
-      sessionStorage.setItem(TOKEN_STORAGE_KEY, login.accessToken);
+      if (usesSessionAuthStorage()) {
+        sessionStorage.setItem(TOKEN_STORAGE_KEY, login.accessToken);
+      }
       setAccessToken(login.accessToken);
       setUser(login.user);
     });
@@ -145,21 +169,49 @@ export function App({ apiClient: injectedApiClient }: AppProps) {
           await apiClient.counterSessionClient.startCounterSession({
             locationId: user.locationId,
             counterId: selectedCounter.id,
-            staffId: DEMO_STAFF_ID,
+            staffId: resolveDevelopmentStaffId(user),
           }),
         ).session;
       setSession(nextSession);
-      await Promise.all([refreshQueue(user.locationId), refreshDashboard(user.locationId)]);
+      const [waiting, dashboard] = await Promise.all([
+        refreshQueue(user.locationId),
+        refreshDashboard(user.locationId),
+      ]);
+
+      if (active.session !== null) {
+        // BACKEND_CONFIRMATION_REQUIRED: Dashboard only exposes currentTicketId. Until a
+        // confirmed ticket snapshot endpoint exists, use queue data when it contains the ID
+        // and otherwise show an explicit unknown state instead of claiming the counter is empty.
+        const counterSnapshot = dashboard.counters.find(
+          (counter) => counter.id === nextSession.counterId,
+        );
+        const restoredTicket =
+          counterSnapshot?.currentTicketId === undefined
+            ? undefined
+            : waiting.queue.items.find((ticket) => ticket.id === counterSnapshot.currentTicketId);
+        setCurrentTicket(restoredTicket ?? null);
+        setIsCurrentTicketUnknown(
+          counterSnapshot === undefined ||
+            (counterSnapshot.currentTicketId !== undefined && restoredTicket === undefined),
+        );
+        setQueueMessage('Đã khôi phục ca làm việc.');
+      } else {
+        setCurrentTicket(null);
+        setIsCurrentTicketUnknown(false);
+        setQueueMessage(null);
+      }
     });
   }
 
   function handleLogout(): void {
     void runAction('Đang đăng xuất...', async () => {
-      unwrap(await apiClient.authClient.logout({}));
-      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-      setAccessToken(null);
-      setUser(null);
-      setError(null);
+      try {
+        unwrap(await apiClient.authClient.logout({}));
+      } finally {
+        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+        setAccessToken(null);
+        setUser(null);
+      }
     });
   }
 
@@ -176,6 +228,7 @@ export function App({ apiClient: injectedApiClient }: AppProps) {
         }),
       );
       setCurrentTicket(result.ticket);
+      setIsCurrentTicketUnknown(false);
       setSummary(result.summary);
       setQueueMessage(result.ticket === null ? 'Đã hết hàng chờ.' : null);
       await refreshQueue(user.locationId);
@@ -226,6 +279,7 @@ export function App({ apiClient: injectedApiClient }: AppProps) {
         unwrap(await apiClient.queueClient.finishTicket(common));
       }
       setCurrentTicket(null);
+      setIsCurrentTicketUnknown(false);
       await refreshQueue(user.locationId);
     });
   }
@@ -262,6 +316,7 @@ export function App({ apiClient: injectedApiClient }: AppProps) {
       );
       setSession(null);
       setCurrentTicket(null);
+      setIsCurrentTicketUnknown(false);
       setWaitingTickets([]);
       setSummary(null);
       setQueueMessage(null);
@@ -377,7 +432,10 @@ export function App({ apiClient: injectedApiClient }: AppProps) {
         </article>
         <article className="panel">
           <span>Số đang xử lý</span>
-          <strong>{currentTicket?.ticketNumber ?? 'Trống'}</strong>
+          <strong>
+            {currentTicket?.ticketNumber ??
+              (isCurrentTicketUnknown ? 'Chưa có thông tin' : 'Chưa có')}
+          </strong>
         </article>
         <article className="panel">
           <span>Người đang chờ</span>
@@ -389,7 +447,11 @@ export function App({ apiClient: injectedApiClient }: AppProps) {
         <article className="panel">
           <h2>Ticket hiện tại</h2>
           {currentTicket === null ? (
-            <p>Chưa có ticket đang xử lý.</p>
+            <p>
+              {isCurrentTicketUnknown
+                ? 'Chưa có thông tin ticket đang xử lý.'
+                : 'Chưa có ticket đang xử lý.'}
+            </p>
           ) : (
             <div className="ticket-number">{currentTicket.ticketNumber}</div>
           )}
