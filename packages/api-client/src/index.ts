@@ -1,2 +1,11 @@
-// Workspace smoke-test value only. No API endpoint is implemented here.
-export const API_CLIENT_PACKAGE_PLACEHOLDER = '@qms/api-client placeholder' as const;
+export { createApiClient } from './api-client.js';
+export type { ApiClient } from './api-client.js';
+export { AuthClient } from './auth-client.js';
+export type { ApiClientConfig } from './config.js';
+export { CounterSessionClient } from './counter-session-client.js';
+export { DashboardClient } from './dashboard-client.js';
+export { API_CLIENT_ERROR_KINDS, ApiClientError } from './errors.js';
+export type { ApiClientErrorKind, ApiClientErrorOptions } from './errors.js';
+export { HttpClient } from './http-client.js';
+export type { HttpRequestOptions } from './http-client.js';
+export { QueueClient } from './queue-client.js';
