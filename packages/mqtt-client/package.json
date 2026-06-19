@@ -5,12 +5,24 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
+    "test": "pnpm build && tsc -p tsconfig.test.json --noEmit && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@qms/contracts": "workspace:*"
+  },
   "devDependencies": {
-    "typescript": "5.8.2"
+    "typescript": "5.8.2",
+    "vitest": "3.0.8"
   }
 }

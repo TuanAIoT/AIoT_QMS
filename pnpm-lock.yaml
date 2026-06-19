@@ -258,10 +258,17 @@ importers:
         version: 3.0.8(@types/node@22.13.10)(tsx@4.19.3)
 
   packages/mqtt-client:
+    dependencies:
+      '@qms/contracts':
+        specifier: workspace:*
+        version: link:../contracts
     devDependencies:
       typescript:
         specifier: 5.8.2
         version: 5.8.2
+      vitest:
+        specifier: 3.0.8
+        version: 3.0.8(@types/node@22.13.10)(tsx@4.19.3)
 
   packages/shared-utils:
     devDependencies:
