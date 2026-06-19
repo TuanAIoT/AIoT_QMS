@@ -11,12 +11,16 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@qms/api-client": "workspace:*",
+    "@qms/contracts": "workspace:*",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@testing-library/react": "16.2.0",
     "@types/react": "18.3.18",
     "@types/react-dom": "18.3.5",
+    "jsdom": "26.0.0",
     "typescript": "5.8.2",
     "vite": "6.2.2",
     "vitest": "3.0.8"

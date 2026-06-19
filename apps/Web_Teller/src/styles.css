@@ -1,0 +1,151 @@
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #172033;
+  background: #f3f6fb;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+  padding: 0.7rem 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #155eef;
+  color: white;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+input,
+select {
+  width: 100%;
+  padding: 0.7rem;
+  border: 1px solid #bcc6d8;
+  border-radius: 0.5rem;
+  background: white;
+}
+label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 2rem;
+}
+.centered {
+  display: grid;
+  place-items: center;
+}
+.panel {
+  padding: 1.25rem;
+  border: 1px solid #dce2ec;
+  border-radius: 0.8rem;
+  background: white;
+  box-shadow: 0 0.25rem 1rem rgb(26 39 65 / 7%);
+}
+.auth-panel {
+  width: min(100%, 28rem);
+  display: grid;
+  gap: 1rem;
+}
+.auth-panel form {
+  display: grid;
+  gap: 1rem;
+}
+.eyebrow {
+  margin: 0;
+  color: #155eef;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.notice {
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: #eaf2ff;
+}
+.error,
+[role='alert'] {
+  color: #b42318;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.topbar h1 {
+  margin: 0.25rem 0 0;
+}
+.secondary {
+  background: #475467;
+}
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.summary-grid article {
+  display: grid;
+  gap: 0.5rem;
+}
+.summary-grid span {
+  color: #667085;
+}
+.workspace-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+}
+.ticket-number {
+  margin: 1rem 0;
+  font-size: 3rem;
+  font-weight: 800;
+  color: #155eef;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.waiting-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.waiting-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #eaecf0;
+}
+
+@media (max-width: 760px) {
+  .page {
+    padding: 1rem;
+  }
+  .summary-grid,
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
