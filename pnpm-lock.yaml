@@ -93,6 +93,10 @@ importers:
         version: 3.0.8(@types/node@22.13.10)(jsdom@26.0.0)(tsx@4.19.3)
 
   apps/Linux_Audio_Service:
+    dependencies:
+      '@qms/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
     devDependencies:
       '@types/node':
         specifier: 22.13.10
