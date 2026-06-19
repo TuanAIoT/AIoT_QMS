@@ -9,10 +9,14 @@ import {
 import {
   MQTT_EVENT_TYPES,
   type AudioPlayEvent,
+  type DeviceHeartbeatEvent,
   type DisplayUpdateEvent,
   type MqttEventEnvelope,
   type MqttEventType,
   type QueueCallEvent,
+  type QueueFinishEvent,
+  type QueueRecallEvent,
+  type QueueTransferEvent,
 } from './events.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -27,6 +31,36 @@ const AUDIO_PLAY_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const DISPLAY_UPDATE_PAYLOAD_KEYS: ReadonlySet<string> = new Set(['state']);
+
+const MQTT_ENVELOPE_KEYS: ReadonlySet<string> = new Set([
+  'eventId',
+  'eventType',
+  'locationId',
+  'timestamp',
+  'payload',
+]);
+
+const QUEUE_CALL_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
+  'ticketId',
+  'ticketNumber',
+  'counterId',
+  'counterName',
+]);
+
+const QUEUE_TRANSFER_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
+  'ticketId',
+  'ticketNumber',
+  'fromCounterId',
+  'toCounterId',
+]);
+
+const QUEUE_FINISH_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
+  'ticketId',
+  'ticketNumber',
+  'counterId',
+]);
+
+const DEVICE_HEARTBEAT_PAYLOAD_KEYS: ReadonlySet<string> = new Set(['deviceId', 'status']);
 
 const DISPLAY_STATE_KEYS: ReadonlySet<string> = new Set([
   'locationId',
@@ -133,6 +167,7 @@ export function isMqttEventEnvelope(
 ): value is MqttEventEnvelope<MqttEventType, Record<string, unknown>> {
   return (
     isRecord(value) &&
+    hasOnlyKeys(value, MQTT_ENVELOPE_KEYS) &&
     isNonEmptyString(value.eventId) &&
     isMqttEventType(value.eventType) &&
     isNonEmptyString(value.locationId) &&
@@ -147,10 +182,64 @@ export function isQueueCallEvent(value: unknown): value is QueueCallEvent {
   }
 
   return (
+    hasOnlyKeys(value.payload, QUEUE_CALL_PAYLOAD_KEYS) &&
     isNonEmptyString(value.payload.ticketId) &&
     isNonEmptyString(value.payload.ticketNumber) &&
     isNonEmptyString(value.payload.counterId) &&
     isNonEmptyString(value.payload.counterName)
+  );
+}
+
+export function isQueueRecallEvent(value: unknown): value is QueueRecallEvent {
+  if (!isMqttEventEnvelope(value) || value.eventType !== 'QUEUE_RECALL') {
+    return false;
+  }
+
+  return (
+    hasOnlyKeys(value.payload, QUEUE_CALL_PAYLOAD_KEYS) &&
+    isNonEmptyString(value.payload.ticketId) &&
+    isNonEmptyString(value.payload.ticketNumber) &&
+    isNonEmptyString(value.payload.counterId) &&
+    isNonEmptyString(value.payload.counterName)
+  );
+}
+
+export function isQueueTransferEvent(value: unknown): value is QueueTransferEvent {
+  if (!isMqttEventEnvelope(value) || value.eventType !== 'QUEUE_TRANSFER') {
+    return false;
+  }
+
+  return (
+    hasOnlyKeys(value.payload, QUEUE_TRANSFER_PAYLOAD_KEYS) &&
+    isNonEmptyString(value.payload.ticketId) &&
+    isNonEmptyString(value.payload.ticketNumber) &&
+    isNonEmptyString(value.payload.fromCounterId) &&
+    isNonEmptyString(value.payload.toCounterId)
+  );
+}
+
+export function isQueueFinishEvent(value: unknown): value is QueueFinishEvent {
+  if (!isMqttEventEnvelope(value) || value.eventType !== 'QUEUE_FINISH') {
+    return false;
+  }
+
+  return (
+    hasOnlyKeys(value.payload, QUEUE_FINISH_PAYLOAD_KEYS) &&
+    isNonEmptyString(value.payload.ticketId) &&
+    isNonEmptyString(value.payload.ticketNumber) &&
+    isNonEmptyString(value.payload.counterId)
+  );
+}
+
+export function isDeviceHeartbeatEvent(value: unknown): value is DeviceHeartbeatEvent {
+  if (!isMqttEventEnvelope(value) || value.eventType !== 'DEVICE_HEARTBEAT') {
+    return false;
+  }
+
+  return (
+    hasOnlyKeys(value.payload, DEVICE_HEARTBEAT_PAYLOAD_KEYS) &&
+    isNonEmptyString(value.payload.deviceId) &&
+    (value.payload.status === 'ONLINE' || value.payload.status === 'OFFLINE')
   );
 }
 

@@ -19,9 +19,13 @@ export type {
 export { MQTT_EVENT_TYPES } from './events.js';
 export {
   isAudioPlayEvent,
+  isDeviceHeartbeatEvent,
   isDisplayUpdateEvent,
   isMqttEventEnvelope,
   isQueueCallEvent,
+  isQueueFinishEvent,
+  isQueueRecallEvent,
+  isQueueTransferEvent,
   isSurveyConfig,
   isTicketStatus,
 } from './validators.js';

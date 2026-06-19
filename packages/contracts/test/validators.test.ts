@@ -1,8 +1,12 @@
 import {
   isAudioPlayEvent,
+  isDeviceHeartbeatEvent,
   isDisplayUpdateEvent,
   isMqttEventEnvelope,
   isQueueCallEvent,
+  isQueueFinishEvent,
+  isQueueRecallEvent,
+  isQueueTransferEvent,
   isSurveyConfig,
   isTicketStatus,
   MQTT_EVENT_TYPES,
@@ -66,6 +70,48 @@ const validAudioPlayEvent = {
     counterName: 'Quầy Demo 01',
     outputMode: 'SERVER_SPEAKER',
     announcementText: 'Mời số A-001 đến Quầy Demo 01',
+  },
+};
+
+const validQueueRecallEvent = {
+  ...validQueueCallEvent,
+  eventId: 'event-recall-001',
+  eventType: 'QUEUE_RECALL',
+};
+
+const validQueueTransferEvent = {
+  eventId: 'event-transfer-001',
+  eventType: 'QUEUE_TRANSFER',
+  locationId: 'location-demo',
+  timestamp: '2026-06-18T10:00:03.000Z',
+  payload: {
+    ticketId: 'ticket-001',
+    ticketNumber: 'A-001',
+    fromCounterId: 'counter-001',
+    toCounterId: 'counter-002',
+  },
+};
+
+const validQueueFinishEvent = {
+  eventId: 'event-finish-001',
+  eventType: 'QUEUE_FINISH',
+  locationId: 'location-demo',
+  timestamp: '2026-06-18T10:00:04.000Z',
+  payload: {
+    ticketId: 'ticket-001',
+    ticketNumber: 'A-001',
+    counterId: 'counter-001',
+  },
+};
+
+const validDeviceHeartbeatEvent = {
+  eventId: 'event-heartbeat-001',
+  eventType: 'DEVICE_HEARTBEAT',
+  locationId: 'location-demo',
+  timestamp: '2026-06-18T10:00:05.000Z',
+  payload: {
+    deviceId: 'device-001',
+    status: 'ONLINE',
   },
 };
 
@@ -135,6 +181,23 @@ describe('isMqttEventEnvelope', () => {
     ).toBe(false);
     expect(isMqttEventEnvelope({ ...validQueueCallEvent, timestamp: 123 })).toBe(false);
   });
+
+  it.each([
+    'customerName',
+    'fullName',
+    'phone',
+    'email',
+    'address',
+    'citizenHash',
+    'cccd',
+    'cccdNumber',
+    'citizenIdNumber',
+    'identityNumber',
+  ])('rejects unexpected envelope field %s', (field) => {
+    expect(isMqttEventEnvelope({ ...validQueueCallEvent, [field]: 'prohibited-value' })).toBe(
+      false,
+    );
+  });
 });
 
 describe('isQueueCallEvent', () => {
@@ -188,6 +251,12 @@ describe('isDisplayUpdateEvent', () => {
         payload: { ...validDisplayUpdateEvent.payload, [field]: 'prohibited-value' },
       }),
     ).toBe(false);
+  });
+
+  it.each(['customerName', 'citizenHash'])('rejects display envelope PII field %s', (field) => {
+    expect(isDisplayUpdateEvent({ ...validDisplayUpdateEvent, [field]: 'prohibited-value' })).toBe(
+      false,
+    );
   });
 
   it.each([
@@ -263,6 +332,70 @@ describe('isAudioPlayEvent', () => {
       isAudioPlayEvent({
         ...validAudioPlayEvent,
         payload: { ...validAudioPlayEvent.payload, [field]: 'prohibited-value' },
+      }),
+    ).toBe(false);
+  });
+
+  it.each(['cccd', 'email'])('rejects audio envelope PII field %s', (field) => {
+    expect(isAudioPlayEvent({ ...validAudioPlayEvent, [field]: 'prohibited-value' })).toBe(false);
+  });
+});
+
+describe('new MQTT event validators', () => {
+  it('validates QueueRecallEvent schema and rejects missing or extra payload fields', () => {
+    expect(isQueueRecallEvent(validQueueRecallEvent)).toBe(true);
+    expect(
+      isQueueRecallEvent({ ...validQueueRecallEvent, payload: { ticketId: 'ticket-001' } }),
+    ).toBe(false);
+    expect(
+      isQueueRecallEvent({
+        ...validQueueRecallEvent,
+        payload: { ...validQueueRecallEvent.payload, extra: true },
+      }),
+    ).toBe(false);
+  });
+
+  it('validates QueueTransferEvent schema and rejects missing or extra payload fields', () => {
+    expect(isQueueTransferEvent(validQueueTransferEvent)).toBe(true);
+    expect(
+      isQueueTransferEvent({
+        ...validQueueTransferEvent,
+        payload: { ticketId: 'ticket-001' },
+      }),
+    ).toBe(false);
+    expect(
+      isQueueTransferEvent({
+        ...validQueueTransferEvent,
+        payload: { ...validQueueTransferEvent.payload, extra: true },
+      }),
+    ).toBe(false);
+  });
+
+  it('validates QueueFinishEvent schema and rejects missing or extra payload fields', () => {
+    expect(isQueueFinishEvent(validQueueFinishEvent)).toBe(true);
+    expect(
+      isQueueFinishEvent({ ...validQueueFinishEvent, payload: { ticketId: 'ticket-001' } }),
+    ).toBe(false);
+    expect(
+      isQueueFinishEvent({
+        ...validQueueFinishEvent,
+        payload: { ...validQueueFinishEvent.payload, extra: true },
+      }),
+    ).toBe(false);
+  });
+
+  it('validates DeviceHeartbeatEvent schema and rejects invalid or extra payload fields', () => {
+    expect(isDeviceHeartbeatEvent(validDeviceHeartbeatEvent)).toBe(true);
+    expect(
+      isDeviceHeartbeatEvent({
+        ...validDeviceHeartbeatEvent,
+        payload: { ...validDeviceHeartbeatEvent.payload, status: 'UNKNOWN' },
+      }),
+    ).toBe(false);
+    expect(
+      isDeviceHeartbeatEvent({
+        ...validDeviceHeartbeatEvent,
+        payload: { ...validDeviceHeartbeatEvent.payload, extra: true },
       }),
     ).toBe(false);
   });

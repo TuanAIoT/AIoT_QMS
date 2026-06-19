@@ -4,8 +4,12 @@
  */
 export const MQTT_TOPICS = {
   queueCall: 'hcc/queue/call',
+  queueRecall: 'hcc/queue/recall',
+  queueTransfer: 'hcc/queue/transfer',
+  queueFinish: 'hcc/queue/finish',
   audioPlay: 'hcc/audio/play',
   displayUpdate: 'hcc/display/update',
+  deviceHeartbeat: 'hcc/device/heartbeat',
 } as const;
 
 /** PROVISIONAL: Counter-specific topic syntax requires Backend confirmation. */

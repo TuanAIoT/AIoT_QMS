@@ -1,2 +1,17 @@
-// Skeleton marker only. No MQTT topic or payload is implemented.
-export const MQTT_SIMULATOR_SKELETON = 'mqtt-simulator skeleton' as const;
+export {
+  createSampleAudioPlayEvent,
+  createSampleDeviceHeartbeatEvent,
+  createSampleDisplayUpdateEvent,
+  createSampleQueueCallEvent,
+  createSampleQueueFinishEvent,
+  createSampleQueueRecallEvent,
+  createSampleQueueTransferEvent,
+} from './samples.js';
+export { MqttSimulator, SIMULATOR_PUBLISH_RESULTS } from './simulator.js';
+export type {
+  SimulatorEvent,
+  SimulatorEventHandler,
+  SimulatorPublishResult,
+  SimulatorSubscription,
+  SimulatorTopic,
+} from './simulator.js';

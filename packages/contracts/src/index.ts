@@ -56,9 +56,13 @@ export type * from './api/index.js';
 export type * from './mqtt/index.js';
 export {
   isAudioPlayEvent,
+  isDeviceHeartbeatEvent,
   isDisplayUpdateEvent,
   isMqttEventEnvelope,
   isQueueCallEvent,
+  isQueueFinishEvent,
+  isQueueRecallEvent,
+  isQueueTransferEvent,
   isSurveyConfig,
   isTicketStatus,
   MQTT_EVENT_TYPES,
