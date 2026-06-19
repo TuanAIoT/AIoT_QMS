@@ -22,6 +22,25 @@ const validQueueCallEvent = {
   },
 };
 
+const validTicket = {
+  id: 'ticket-001',
+  locationId: 'location-demo',
+  sessionId: 'session-demo',
+  ticketNumber: 'A-001',
+  serviceId: 'service-demo',
+  counterId: 'counter-001',
+  servicePoolId: 'pool-demo',
+  status: 'WAITING',
+  source: 'KIOSK',
+  priorityLevel: 0,
+  issuedAt: '2026-06-18T09:55:00.000Z',
+  calledAt: '2026-06-18T09:56:00.000Z',
+  servingAt: '2026-06-18T09:57:00.000Z',
+  finishedAt: '2026-06-18T09:58:00.000Z',
+  nextServiceId: 'service-demo-next',
+  estimatedWaitSeconds: 120,
+};
+
 const validDisplayUpdateEvent = {
   eventId: 'event-display-001',
   eventType: 'DISPLAY_UPDATE',
@@ -30,7 +49,7 @@ const validDisplayUpdateEvent = {
   payload: {
     state: {
       locationId: 'location-demo',
-      currentTicket: null,
+      currentTicket: validTicket,
       waitingTickets: [],
       updatedAt: '2026-06-18T10:00:01.000Z',
     },
@@ -69,6 +88,53 @@ describe('isMqttEventEnvelope', () => {
     expect(isMqttEventEnvelope({ ...validQueueCallEvent, eventType: 'UNKNOWN_EVENT' })).toBe(false);
     expect(isMqttEventEnvelope({ ...validQueueCallEvent, payload: undefined })).toBe(false);
   });
+
+  it('rejects an envelope with eventId omitted entirely', () => {
+    expect(
+      isMqttEventEnvelope({
+        eventType: validQueueCallEvent.eventType,
+        locationId: validQueueCallEvent.locationId,
+        timestamp: validQueueCallEvent.timestamp,
+        payload: validQueueCallEvent.payload,
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects an envelope with locationId omitted entirely', () => {
+    expect(
+      isMqttEventEnvelope({
+        eventId: validQueueCallEvent.eventId,
+        eventType: validQueueCallEvent.eventType,
+        timestamp: validQueueCallEvent.timestamp,
+        payload: validQueueCallEvent.payload,
+      }),
+    ).toBe(false);
+  });
+
+  it('accepts a canonical UTC timestamp', () => {
+    expect(isMqttEventEnvelope(validQueueCallEvent)).toBe(true);
+  });
+
+  it('rejects an impossible calendar date', () => {
+    expect(
+      isMqttEventEnvelope({
+        ...validQueueCallEvent,
+        timestamp: '2026-02-30T10:00:00.000Z',
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects a missing or non-string timestamp', () => {
+    expect(
+      isMqttEventEnvelope({
+        eventId: validQueueCallEvent.eventId,
+        eventType: validQueueCallEvent.eventType,
+        locationId: validQueueCallEvent.locationId,
+        payload: validQueueCallEvent.payload,
+      }),
+    ).toBe(false);
+    expect(isMqttEventEnvelope({ ...validQueueCallEvent, timestamp: 123 })).toBe(false);
+  });
 });
 
 describe('isQueueCallEvent', () => {
@@ -104,16 +170,50 @@ describe('isDisplayUpdateEvent', () => {
     expect(isDisplayUpdateEvent(invalidEvent)).toBe(false);
   });
 
-  it('rejects sensitive citizen fields anywhere in the display payload', () => {
-    const invalidEvent = {
-      ...validDisplayUpdateEvent,
-      payload: {
-        ...validDisplayUpdateEvent.payload,
-        citizenHash: 'synthetic-value',
-      },
-    };
+  it.each([
+    'customerName',
+    'fullName',
+    'phone',
+    'email',
+    'address',
+    'citizenHash',
+    'cccd',
+    'cccdNumber',
+    'citizenIdNumber',
+    'identityNumber',
+  ])('rejects unexpected display payload field %s', (field) => {
+    expect(
+      isDisplayUpdateEvent({
+        ...validDisplayUpdateEvent,
+        payload: { ...validDisplayUpdateEvent.payload, [field]: 'prohibited-value' },
+      }),
+    ).toBe(false);
+  });
 
-    expect(isDisplayUpdateEvent(invalidEvent)).toBe(false);
+  it.each([
+    ['counterId', 123],
+    ['sessionId', 123],
+    ['servicePoolId', 123],
+    ['calledAt', 123],
+    ['servingAt', 123],
+    ['finishedAt', 123],
+    ['nextServiceId', 123],
+    ['estimatedWaitSeconds', '120'],
+    ['cccdScanned', 'not-a-boolean'],
+    ['faceVerified', 'not-a-boolean'],
+    ['ewtSeconds', '120'],
+  ])('rejects invalid or unknown Ticket optional field %s', (field, value) => {
+    expect(
+      isDisplayUpdateEvent({
+        ...validDisplayUpdateEvent,
+        payload: {
+          state: {
+            ...validDisplayUpdateEvent.payload.state,
+            currentTicket: { ...validTicket, [field]: value },
+          },
+        },
+      }),
+    ).toBe(false);
   });
 });
 
@@ -147,11 +247,22 @@ describe('isAudioPlayEvent', () => {
     ).toBe(false);
   });
 
-  it('rejects sensitive citizen fields in the audio payload', () => {
+  it.each([
+    'customerName',
+    'fullName',
+    'phone',
+    'email',
+    'address',
+    'citizenHash',
+    'cccd',
+    'cccdNumber',
+    'citizenIdNumber',
+    'identityNumber',
+  ])('rejects unexpected audio payload field %s', (field) => {
     expect(
       isAudioPlayEvent({
         ...validAudioPlayEvent,
-        payload: { ...validAudioPlayEvent.payload, cccd: 'prohibited-value' },
+        payload: { ...validAudioPlayEvent.payload, [field]: 'prohibited-value' },
       }),
     ).toBe(false);
   });

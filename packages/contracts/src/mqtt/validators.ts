@@ -19,28 +19,44 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-const FORBIDDEN_IDENTITY_KEYS = new Set([
-  'cccd',
-  'cccdnumber',
-  'citizenidnumber',
-  'identitynumber',
-  'citizenhash',
+const AUDIO_PLAY_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
+  'ticketNumber',
+  'counterName',
+  'outputMode',
+  'announcementText',
 ]);
 
-function containsForbiddenIdentityKey(value: unknown): boolean {
-  if (Array.isArray(value)) {
-    return value.some(containsForbiddenIdentityKey);
-  }
+const DISPLAY_UPDATE_PAYLOAD_KEYS: ReadonlySet<string> = new Set(['state']);
 
-  if (!isRecord(value)) {
-    return false;
-  }
+const DISPLAY_STATE_KEYS: ReadonlySet<string> = new Set([
+  'locationId',
+  'counterId',
+  'currentTicket',
+  'waitingTickets',
+  'updatedAt',
+]);
 
-  return Object.entries(value).some(
-    ([key, nestedValue]) =>
-      FORBIDDEN_IDENTITY_KEYS.has(key.toLowerCase()) ||
-      containsForbiddenIdentityKey(nestedValue),
-  );
+const TICKET_KEYS: ReadonlySet<string> = new Set([
+  'id',
+  'locationId',
+  'sessionId',
+  'ticketNumber',
+  'serviceId',
+  'counterId',
+  'servicePoolId',
+  'status',
+  'source',
+  'priorityLevel',
+  'issuedAt',
+  'calledAt',
+  'servingAt',
+  'finishedAt',
+  'nextServiceId',
+  'estimatedWaitSeconds',
+]);
+
+function hasOnlyKeys(value: Record<string, unknown>, allowedKeys: ReadonlySet<string>): boolean {
+  return Object.keys(value).every((key) => allowedKeys.has(key));
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -48,11 +64,13 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isISODateTimeString(value: unknown): value is ISODateTimeString {
-  return (
-    typeof value === 'string' &&
-    /^\d{4}-\d{2}-\d{2}T/.test(value) &&
-    !Number.isNaN(Date.parse(value))
-  );
+  // BACKEND_CONFIRMATION_REQUIRED: Offset timezone support is not confirmed.
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+    return false;
+  }
+
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime()) && date.toISOString() === value;
 }
 
 function isMqttEventType(value: unknown): value is MqttEventType {
@@ -66,14 +84,26 @@ function isAudioOutputMode(value: unknown): value is AudioOutputMode {
 function isTicket(value: unknown): value is Ticket {
   return (
     isRecord(value) &&
+    hasOnlyKeys(value, TICKET_KEYS) &&
     isNonEmptyString(value.id) &&
     isNonEmptyString(value.locationId) &&
+    (value.sessionId === undefined || isNonEmptyString(value.sessionId)) &&
     isNonEmptyString(value.ticketNumber) &&
     isNonEmptyString(value.serviceId) &&
+    (value.counterId === undefined || isNonEmptyString(value.counterId)) &&
+    (value.servicePoolId === undefined || isNonEmptyString(value.servicePoolId)) &&
     isTicketStatus(value.status) &&
     isTicketSource(value.source) &&
     isPriorityLevel(value.priorityLevel) &&
-    isISODateTimeString(value.issuedAt)
+    isISODateTimeString(value.issuedAt) &&
+    (value.calledAt === undefined || isISODateTimeString(value.calledAt)) &&
+    (value.servingAt === undefined || isISODateTimeString(value.servingAt)) &&
+    (value.finishedAt === undefined || isISODateTimeString(value.finishedAt)) &&
+    (value.nextServiceId === undefined || isNonEmptyString(value.nextServiceId)) &&
+    (value.estimatedWaitSeconds === undefined ||
+      (typeof value.estimatedWaitSeconds === 'number' &&
+        Number.isFinite(value.estimatedWaitSeconds) &&
+        value.estimatedWaitSeconds >= 0))
   );
 }
 
@@ -88,6 +118,7 @@ function isPriorityLevel(value: unknown): boolean {
 function isDisplayState(value: unknown): value is DisplayState {
   return (
     isRecord(value) &&
+    hasOnlyKeys(value, DISPLAY_STATE_KEYS) &&
     isNonEmptyString(value.locationId) &&
     (value.counterId === undefined || isNonEmptyString(value.counterId)) &&
     (value.currentTicket === null || isTicket(value.currentTicket)) &&
@@ -127,7 +158,7 @@ export function isDisplayUpdateEvent(value: unknown): value is DisplayUpdateEven
   return (
     isMqttEventEnvelope(value) &&
     value.eventType === 'DISPLAY_UPDATE' &&
-    !containsForbiddenIdentityKey(value.payload) &&
+    hasOnlyKeys(value.payload, DISPLAY_UPDATE_PAYLOAD_KEYS) &&
     isDisplayState(value.payload.state)
   );
 }
@@ -138,7 +169,7 @@ export function isAudioPlayEvent(value: unknown): value is AudioPlayEvent {
   }
 
   return (
-    !containsForbiddenIdentityKey(value.payload) &&
+    hasOnlyKeys(value.payload, AUDIO_PLAY_PAYLOAD_KEYS) &&
     isNonEmptyString(value.payload.ticketNumber) &&
     isNonEmptyString(value.payload.counterName) &&
     isAudioOutputMode(value.payload.outputMode) &&
