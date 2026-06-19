@@ -1,2 +1,3 @@
-// Skeleton marker only. No API endpoint is implemented.
-export const MOCK_LOCAL_SERVER_SKELETON = 'mock-local-server skeleton' as const;
+export { createMockLocalServer, MockLocalServer } from './server.js';
+export type { MockLocalServerOptions } from './server.js';
+export { MockLocalState, MockStateError } from './state.js';
