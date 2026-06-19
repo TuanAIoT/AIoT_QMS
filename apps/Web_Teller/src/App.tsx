@@ -14,7 +14,7 @@ import './styles.css';
 
 export const APP_NAME = 'Web_Teller';
 
-const DEFAULT_LOCAL_API_URL = 'http://localhost:3100/api/v1';
+const DEFAULT_LOCAL_API_URL = 'http://127.0.0.1:3001/api/v1';
 const TOKEN_STORAGE_KEY = 'qms-web-teller-mock-access-token';
 
 // BACKEND_CONFIRMATION_REQUIRED: Counter/service discovery endpoints are not confirmed.
@@ -512,3 +512,4 @@ export function App({ apiClient: injectedApiClient }: AppProps) {
     </main>
   );
 }
+
