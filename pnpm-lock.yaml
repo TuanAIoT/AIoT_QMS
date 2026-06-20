@@ -234,6 +234,9 @@ importers:
       '@qms/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@qms/mqtt-simulator':
+        specifier: workspace:*
+        version: link:../mqtt-simulator
       '@qms/seed-data':
         specifier: workspace:*
         version: link:../seed-data

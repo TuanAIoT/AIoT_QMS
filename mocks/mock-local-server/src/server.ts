@@ -3,6 +3,7 @@ import type {
   ApiResponse,
   AssistedTicketRequest,
   CallNextRequest,
+  Counter,
   DashboardSummaryResponse,
   EndCounterSessionRequest,
   LoginRequest,
@@ -20,6 +21,7 @@ import { DEMO_LOCATION } from '@qms/seed-data';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
+import { DevEventPipeline } from './dev-events.js';
 import { MockLocalState, MockStateError } from './state.js';
 
 const API_BASE_PATH = '/api/v1';
@@ -131,6 +133,7 @@ function isAuthorized(request: IncomingMessage): boolean {
 
 export class MockLocalServer {
   readonly state = new MockLocalState();
+  readonly devEvents = new DevEventPipeline(this.state);
   private readonly httpServer: Server;
   private readonly delayMs: number;
   private readonly corsOrigins: ReadonlySet<string>;
@@ -150,6 +153,7 @@ export class MockLocalServer {
 
   resetState(): void {
     this.state.reset();
+    this.devEvents.reset();
   }
 
   listen(port = 0, host = '127.0.0.1'): Promise<number> {
@@ -242,6 +246,12 @@ export class MockLocalServer {
         });
       } else if (method === 'GET' && path === `${API_BASE_PATH}/queue/waiting`) {
         this.getWaitingQueue(url, response);
+      } else if (method === 'GET' && path === `${API_BASE_PATH}/dev/events`) {
+        this.getDevEvents(url, response);
+      } else if (method === 'POST' && path === `${API_BASE_PATH}/dev/events/reset`) {
+        await readJson(request);
+        this.devEvents.reset();
+        sendSuccess(response, { reset: true, lastSequence: 0 });
       } else if (method === 'POST' && path === `${API_BASE_PATH}/queue/call-next`) {
         const body = requireObject(await readJson(request), [
           'locationId',
@@ -253,13 +263,21 @@ export class MockLocalServer {
           counterId: asString(body, 'counterId'),
           sessionId: asString(body, 'sessionId'),
         };
+        const counter = this.requireCounter(command.counterId, command.locationId);
+        const ticket = this.state.callNext(command);
+        if (ticket !== null) {
+          this.devEvents.recordCall(ticket, counter);
+        }
         sendSuccess(response, {
-          ticket: this.state.callNext(command),
+          ticket,
           summary: this.state.getQueueSummary(command.locationId),
         });
       } else if (method === 'POST' && path === `${API_BASE_PATH}/queue/recall`) {
         const command = await this.readTicketCommand(request);
-        sendSuccess(response, { ticket: this.state.recall(command) });
+        const counter = this.requireCounter(command.counterId, command.locationId);
+        const ticket = this.state.recall(command);
+        this.devEvents.recordRecall(ticket, counter);
+        sendSuccess(response, { ticket });
       } else if (method === 'POST' && path === `${API_BASE_PATH}/queue/skip`) {
         const command = await this.readTicketCommand(request);
         sendSuccess(response, {
@@ -270,7 +288,10 @@ export class MockLocalServer {
         await this.transfer(request, response);
       } else if (method === 'POST' && path === `${API_BASE_PATH}/queue/finish`) {
         const command = await this.readTicketCommand(request);
-        sendSuccess(response, { ticket: this.state.finish(command) });
+        const counter = this.requireCounter(command.counterId, command.locationId);
+        const ticket = this.state.finish(command);
+        this.devEvents.recordFinish(ticket, counter);
+        sendSuccess(response, { ticket });
       } else if (method === 'POST' && path === `${API_BASE_PATH}/queue/ticket/assisted`) {
         await this.createAssistedTicket(request, response);
       } else if (method === 'GET' && path === `${API_BASE_PATH}/dashboard/summary`) {
@@ -414,7 +435,10 @@ export class MockLocalServer {
       sessionId: asString(body, 'sessionId'),
       ...(nextServiceId === undefined ? {} : { nextServiceId }),
     };
-    sendSuccess(response, { ticket: this.state.transfer(command) });
+    const toCounter = this.requireCounter(command.toCounterId, command.locationId);
+    const ticket = this.state.transfer(command);
+    this.devEvents.recordTransfer(ticket, command.fromCounterId, toCounter);
+    sendSuccess(response, { ticket });
   }
 
   private async createAssistedTicket(
@@ -460,6 +484,26 @@ export class MockLocalServer {
       updatedAt,
     };
     sendSuccess(response, data);
+  }
+
+  /** DEVELOPMENT_ONLY / BACKEND_CONFIRMATION_REQUIRED: In-memory event inspection only. */
+  private getDevEvents(url: URL, response: ServerResponse): void {
+    const afterValue = url.searchParams.get('after');
+    const after = afterValue === null ? 0 : Number(afterValue);
+    if (!Number.isInteger(after) || after < 0) {
+      throw new MockStateError(400, 'INVALID_SEQUENCE', 'after must be a non-negative integer.');
+    }
+    sendSuccess(response, this.devEvents.snapshot(after));
+  }
+
+  private requireCounter(counterId: string, locationId: string): Counter {
+    const counter = this.state.counters.find(
+      (candidate) => candidate.id === counterId && candidate.locationId === locationId,
+    );
+    if (counter === undefined) {
+      throw new MockStateError(404, 'COUNTER_NOT_FOUND', 'The counter was not found.');
+    }
+    return counter;
   }
 }
 

@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@qms/contracts": "workspace:*",
+    "@qms/mqtt-simulator": "workspace:*",
     "@qms/seed-data": "workspace:*"
   },
   "devDependencies": {

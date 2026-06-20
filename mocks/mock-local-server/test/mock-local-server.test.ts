@@ -1,5 +1,6 @@
 import type {
   ApiResponse,
+  AudioPlayEvent,
   AssistedTicketResponse,
   CallNextResponse,
   FinishResponse,
@@ -9,6 +10,14 @@ import type {
   RecallResponse,
   SkipResponse,
   StartCounterSessionResponse,
+  TransferResponse,
+} from '@qms/contracts';
+import {
+  isAudioPlayEvent,
+  isDisplayUpdateEvent,
+  isQueueCallEvent,
+  isQueueFinishEvent,
+  isQueueRecallEvent,
 } from '@qms/contracts';
 import {
   DEMO_ACTIVE_COUNTER_SESSION,
@@ -19,7 +28,12 @@ import {
 } from '@qms/seed-data';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { createMockLocalServer, type MockLocalServer } from '../src/index.js';
+import {
+  createMockLocalServer,
+  DEV_EVENT_TOPICS,
+  type DevEventsResponse,
+  type MockLocalServer,
+} from '../src/index.js';
 
 interface HttpResult<T> {
   readonly status: number;
@@ -80,6 +94,14 @@ async function callNext(): Promise<CallNextResponse> {
       sessionId: DEMO_ACTIVE_COUNTER_SESSION.id,
     },
   });
+  expect(result.status).toBe(200);
+  return getData(result.body);
+}
+
+async function getDevEvents(after?: number): Promise<DevEventsResponse> {
+  const result = await authorizedRequest<DevEventsResponse>(
+    `/dev/events${after === undefined ? '' : `?after=${String(after)}`}`,
+  );
   expect(result.status).toBe(200);
   return getData(result.body);
 }
@@ -217,11 +239,32 @@ describe('Mock Local Server', () => {
     });
   });
 
+  it('creates validated call, display, and audio dev events after call-next', async () => {
+    await callNext();
+    const log = await getDevEvents();
+
+    expect(log.events.map((entry) => entry.topic)).toEqual([
+      DEV_EVENT_TOPICS.queueCall,
+      DEV_EVENT_TOPICS.displayUpdate,
+      DEV_EVENT_TOPICS.audioPlay,
+    ]);
+    expect(isQueueCallEvent(log.events[0]?.event)).toBe(true);
+    expect(isDisplayUpdateEvent(log.events[1]?.event)).toBe(true);
+    expect(isAudioPlayEvent(log.events[2]?.event)).toBe(true);
+    expect(log.lastSequence).toBe(3);
+  });
+
   it('returns a successful null result when no waiting ticket remains', async () => {
     await callNext();
+    const before = await getDevEvents();
     const data = await callNext();
+    const after = await getDevEvents();
 
     expect(data.ticket).toBeNull();
+    expect(after.events).toEqual(before.events);
+    expect(after.events.filter((entry) => entry.topic === DEV_EVENT_TOPICS.audioPlay)).toHaveLength(
+      1,
+    );
   });
 
   it('recalls a called ticket without changing its primary state', async () => {
@@ -241,6 +284,12 @@ describe('Mock Local Server', () => {
 
     expect(result.status).toBe(200);
     expect(getData(result.body).ticket.status).toBe('CALLED');
+    const log = await getDevEvents(3);
+    expect(log.events.map((entry) => entry.topic)).toEqual([
+      DEV_EVENT_TOPICS.queueRecall,
+      DEV_EVENT_TOPICS.audioPlay,
+    ]);
+    expect(isQueueRecallEvent(log.events[0]?.event)).toBe(true);
   });
 
   it('skips a called ticket', async () => {
@@ -262,6 +311,31 @@ describe('Mock Local Server', () => {
     expect(getData(result.body).ticket.status).toBe('SKIPPED');
   });
 
+  it('creates transfer and display events after transferring a called ticket', async () => {
+    const called = await callNext();
+    if (called.ticket === null) {
+      throw new Error('Expected a called ticket.');
+    }
+    const result = await authorizedRequest<TransferResponse>('/queue/transfer', {
+      method: 'POST',
+      body: {
+        locationId: DEMO_LOCATION.id,
+        ticketId: called.ticket.id,
+        fromCounterId: DEMO_COUNTERS[0].id,
+        toCounterId: DEMO_COUNTERS[1].id,
+        sessionId: DEMO_ACTIVE_COUNTER_SESSION.id,
+      },
+    });
+    const log = await getDevEvents(3);
+
+    expect(result.status).toBe(200);
+    expect(getData(result.body).ticket.status).toBe('TRANSFERRED');
+    expect(log.events.map((entry) => entry.topic)).toEqual([
+      DEV_EVENT_TOPICS.queueTransfer,
+      DEV_EVENT_TOPICS.displayUpdate,
+    ]);
+  });
+
   it('finishes a called ticket', async () => {
     const called = await callNext();
     if (called.ticket === null) {
@@ -279,6 +353,82 @@ describe('Mock Local Server', () => {
 
     expect(result.status).toBe(200);
     expect(getData(result.body).ticket.status).toBe('FINISHED');
+    const log = await getDevEvents(3);
+    expect(log.events.map((entry) => entry.topic)).toEqual([
+      DEV_EVENT_TOPICS.queueFinish,
+      DEV_EVENT_TOPICS.displayUpdate,
+    ]);
+    expect(isQueueFinishEvent(log.events[0]?.event)).toBe(true);
+  });
+
+  it('returns only events newer than the requested sequence', async () => {
+    await callNext();
+
+    const log = await getDevEvents(1);
+
+    expect(log.events.map((entry) => entry.sequence)).toEqual([2, 3]);
+    expect(log.lastSequence).toBe(3);
+  });
+
+  it('resets the development event log through the dev-only endpoint', async () => {
+    await callNext();
+
+    const reset = await authorizedRequest<{
+      readonly reset: boolean;
+      readonly lastSequence: number;
+    }>('/dev/events/reset', { method: 'POST', body: {} });
+    const log = await getDevEvents();
+
+    expect(reset.status).toBe(200);
+    expect(getData(reset.body)).toEqual({ reset: true, lastSequence: 0 });
+    expect(log).toEqual({ events: [], lastSequence: 0 });
+  });
+
+  it('keeps development events free of raw identity and contact fields', async () => {
+    await callNext();
+    const log = await getDevEvents();
+    const serialized = JSON.stringify(log);
+
+    expect(serialized).not.toMatch(
+      /"(?:cccd|cccdNumber|citizenIdNumber|identityNumber|citizenHash|cccdScanned|faceVerified|customerName|phone|email|address)"/i,
+    );
+  });
+
+  it('creates an audio announcement from safe public fields only', async () => {
+    await callNext();
+    const log = await getDevEvents();
+    const audioEntry = log.events.find((entry) => entry.topic === DEV_EVENT_TOPICS.audioPlay);
+
+    expect(isAudioPlayEvent(audioEntry?.event)).toBe(true);
+    if (!isAudioPlayEvent(audioEntry?.event)) {
+      throw new Error('Expected a validated AudioPlayEvent.');
+    }
+    const audioEvent: AudioPlayEvent = audioEntry.event;
+    expect(audioEvent.payload.announcementText).toBe('Mời số A001 đến quầy Demo 01');
+    expect(audioEvent.payload.announcementText).not.toMatch(
+      /cccd|cmnd|@|(?:\+?84|0)\d{9,10}|\b\d{12}\b/i,
+    );
+  });
+
+  it('does not store an event that fails its contract validator', async () => {
+    const invalidEvent = {
+      eventId: 'invalid-audio-event',
+      eventType: 'AUDIO_PLAY',
+      locationId: DEMO_LOCATION.id,
+      timestamp: '2026-06-20T08:00:00.000Z',
+      payload: {
+        ticketNumber: 'A001',
+        counterName: 'Quầy Demo 01',
+        outputMode: 'SERVER_SPEAKER',
+        announcementText: 'Mời số A001 đến quầy Demo 01',
+        cccd: 'must-be-rejected',
+      },
+    };
+
+    expect(server.devEvents.publish(DEV_EVENT_TOPICS.audioPlay, invalidEvent)).toBe(
+      'INVALID_EVENT',
+    );
+    expect(await getDevEvents()).toEqual({ events: [], lastSequence: 0 });
   });
 
   it('creates an assisted STAFF ticket', async () => {
