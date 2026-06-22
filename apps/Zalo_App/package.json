@@ -15,6 +15,7 @@
     "zmp:deploy": "zmp deploy --existing --outputDir dist"
   },
   "dependencies": {
+    "qrcode.react": "4.2.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "zmp-sdk": "2.51.4"

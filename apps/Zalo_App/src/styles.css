@@ -38,6 +38,11 @@ select {
   padding: 0.5rem 0 1rem;
 }
 
+.app-title {
+  min-width: 0;
+  flex: 1;
+}
+
 .app-mark {
   display: grid;
   width: 2.75rem;
@@ -64,6 +69,17 @@ select {
   font-size: 1.15rem;
 }
 
+.demo-badge {
+  flex: none;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid #a9c8ff;
+  border-radius: 999px;
+  color: #0645b8;
+  background: #e8f1ff;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
 .app-kicker,
 .eyebrow {
   color: #62718a;
@@ -76,7 +92,10 @@ select {
 .runtime-card,
 .welcome-card,
 .form-card,
-.empty-card {
+.empty-card,
+.booking-card,
+.qr-card,
+.error-card {
   margin-bottom: 0.9rem;
   border: 1px solid #e1e7f0;
   border-radius: 1rem;
@@ -123,6 +142,28 @@ select {
   display: grid;
   gap: 0.65rem;
   padding: 1.15rem;
+}
+
+.error-card {
+  padding: 1rem;
+  border-color: #f0c8bc;
+  color: #7d2d1b;
+  background: #fff8f5;
+}
+
+.error-card p {
+  margin: 0.35rem 0 0.75rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.error-card button {
+  padding: 0.55rem 0.8rem;
+  border: 0;
+  border-radius: 0.65rem;
+  color: white;
+  background: #a23b22;
+  font-weight: 700;
 }
 
 .section-heading {
@@ -173,6 +214,12 @@ select {
   font-weight: 800;
 }
 
+.form-card button:not(:disabled) {
+  color: white;
+  background: #0068ff;
+  cursor: pointer;
+}
+
 .backend-note {
   margin: 0;
   color: #68768b;
@@ -199,6 +246,15 @@ select {
   font-weight: 800;
 }
 
+.loading-dot {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  border-radius: 50%;
+  background: #0068ff;
+  box-shadow: 0 0 0 0.35rem #e8f1ff;
+}
+
 .empty-card h2 {
   font-size: 1rem;
 }
@@ -208,6 +264,128 @@ select {
   color: #68768b;
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.booking-card,
+.qr-card {
+  padding: 1.15rem;
+}
+
+.booking-card h2,
+.qr-card h2,
+.qr-card p {
+  margin: 0;
+}
+
+.status-chip {
+  flex: none;
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  color: #065f46;
+  background: #d9f8e9;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.status-cancelled,
+.status-expired {
+  color: #8a341f;
+  background: #fde6df;
+}
+
+.booking-card dl {
+  display: grid;
+  gap: 0.7rem;
+  margin: 1rem 0;
+}
+
+.booking-card dl > div {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.booking-card dt {
+  color: #68768b;
+  font-size: 0.8rem;
+}
+
+.booking-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #26344e;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.booking-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+.booking-actions button {
+  min-height: 2.75rem;
+  padding: 0.65rem;
+  border-radius: 0.7rem;
+  background: white;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.secondary-button {
+  border: 1px solid #0068ff;
+  color: #0059db;
+}
+
+.danger-button {
+  border: 1px solid #c74a2f;
+  color: #a23b22;
+}
+
+.booking-actions button:disabled {
+  border-color: #d8deea;
+  color: #909bad;
+  background: #f5f7fa;
+}
+
+.qr-card {
+  text-align: center;
+}
+
+.qr-card .eyebrow {
+  margin-bottom: 0.25rem;
+}
+
+.qr-frame {
+  display: inline-grid;
+  max-width: 100%;
+  margin: 1rem auto;
+  padding: 0.75rem;
+  place-items: center;
+  border: 1px solid #d7deea;
+  border-radius: 0.8rem;
+  background: white;
+}
+
+.qr-frame svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.qr-card > p:last-of-type {
+  color: #52627a;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.qr-card small {
+  display: block;
+  margin-top: 0.4rem;
+  color: #788599;
 }
 
 footer {
@@ -221,5 +399,29 @@ footer {
 @media (min-width: 40rem) {
   .app-shell {
     padding-top: 2rem;
+  }
+}
+
+@media (max-width: 22rem) {
+  .app-shell {
+    padding-inline: 0.75rem;
+  }
+
+  .app-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .demo-badge {
+    margin-left: 3.5rem;
+  }
+
+  .section-heading,
+  .booking-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .section-heading {
+    flex-direction: column;
   }
 }
