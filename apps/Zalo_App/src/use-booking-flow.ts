@@ -4,6 +4,7 @@ import {
   type Booking,
   type BookingApi,
   type BookingStatus,
+  CentralApiError,
   type CentralLocation,
   type CentralService,
   type CheckInToken,
@@ -19,9 +20,15 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 type RetryAction = 'initialize' | 'services' | 'create' | 'qr' | 'cancel' | 'poll';
 type BusyAction = 'initialize' | 'services' | 'create' | 'qr' | 'cancel' | null;
+export type DevelopmentErrorCode =
+  | 'CONFIGURATION_ERROR'
+  | 'REQUEST_ABORTED'
+  | 'AUTH_FAILED'
+  | 'NETWORK_ERROR';
 
 interface FlowError {
   readonly message: string;
+  readonly code: DevelopmentErrorCode;
   readonly retryAction: RetryAction;
 }
 
@@ -57,6 +64,21 @@ function safeMessage(error: unknown): string {
   return error instanceof Error && error.message.trim().length > 0
     ? error.message
     : 'Đã xảy ra lỗi. Vui lòng thử lại.';
+}
+
+function developmentErrorCode(error: unknown): DevelopmentErrorCode {
+  if (error instanceof CentralApiError) {
+    if (error.kind === 'CONFIGURATION') {
+      return 'CONFIGURATION_ERROR';
+    }
+    if (error.kind === 'ABORTED') {
+      return 'REQUEST_ABORTED';
+    }
+    if (error.status === 401 || error.code === 'UNAUTHORIZED') {
+      return 'AUTH_FAILED';
+    }
+  }
+  return 'NETWORK_ERROR';
 }
 
 export function isTerminalBookingStatus(status: BookingStatus): boolean {
@@ -114,7 +136,11 @@ export function useBookingFlow(options: BookingFlowOptions): BookingFlow {
         if (active && !controller.signal.aborted) {
           setPhase('idle');
           setBusyAction(null);
-          setError({ message: safeMessage(caught), retryAction: 'initialize' });
+          setError({
+            message: safeMessage(caught),
+            code: developmentErrorCode(caught),
+            retryAction: 'initialize',
+          });
         }
       }
     })();
@@ -145,7 +171,11 @@ export function useBookingFlow(options: BookingFlowOptions): BookingFlow {
       .catch((caught: unknown) => {
         if (active && !controller.signal.aborted) {
           setBusyAction(null);
-          setError({ message: safeMessage(caught), retryAction: 'services' });
+          setError({
+            message: safeMessage(caught),
+            code: developmentErrorCode(caught),
+            retryAction: 'services',
+          });
         }
       });
     return () => {
@@ -226,7 +256,11 @@ export function useBookingFlow(options: BookingFlowOptions): BookingFlow {
         timer = setTimeout(() => void poll(), pollIntervalMs);
       } catch (caught) {
         if (active && controller.signal.aborted !== true) {
-          setError({ message: safeMessage(caught), retryAction: 'poll' });
+          setError({
+            message: safeMessage(caught),
+            code: developmentErrorCode(caught),
+            retryAction: 'poll',
+          });
           timer = setTimeout(() => void poll(), pollIntervalMs);
         }
       }
@@ -307,7 +341,11 @@ export function useBookingFlow(options: BookingFlowOptions): BookingFlow {
         setCheckInToken(null);
       } catch (caught) {
         if (mounted.current && !signal.aborted) {
-          setError({ message: safeMessage(caught), retryAction: 'create' });
+          setError({
+            message: safeMessage(caught),
+            code: developmentErrorCode(caught),
+            retryAction: 'create',
+          });
         }
       }
     });
@@ -329,7 +367,11 @@ export function useBookingFlow(options: BookingFlowOptions): BookingFlow {
         setCheckInToken(issued);
       } catch (caught) {
         if (mounted.current && !signal.aborted) {
-          setError({ message: safeMessage(caught), retryAction: 'qr' });
+          setError({
+            message: safeMessage(caught),
+            code: developmentErrorCode(caught),
+            retryAction: 'qr',
+          });
         }
       }
     });
@@ -367,7 +409,11 @@ export function useBookingFlow(options: BookingFlowOptions): BookingFlow {
         setCheckInToken(null);
       } catch (caught) {
         if (mounted.current && !signal.aborted) {
-          setError({ message: safeMessage(caught), retryAction: 'cancel' });
+          setError({
+            message: safeMessage(caught),
+            code: developmentErrorCode(caught),
+            retryAction: 'cancel',
+          });
         }
       }
     });

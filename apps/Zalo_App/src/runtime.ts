@@ -1,5 +1,3 @@
-import { getSystemInfo } from 'zmp-sdk/apis';
-
 export type ZaloRuntimeKind = 'zalo-mini-app' | 'browser-development';
 
 export type ZaloRuntimeState =
@@ -17,6 +15,11 @@ export interface ZaloRuntimeConfig {
 export type SystemInfoReader = () => unknown | Promise<unknown>;
 
 const DEFAULT_SYSTEM_INFO_TIMEOUT_MS = 1_500;
+
+async function readZaloSystemInfo(): Promise<unknown> {
+  const { getSystemInfo } = await import('zmp-sdk/apis');
+  return getSystemInfo();
+}
 
 export function isBrowserDevelopmentEnabled(
   isDevelopment: boolean,
@@ -48,8 +51,11 @@ function hasConfiguredMiniAppId(value: string | undefined): boolean {
 
 export async function initializeZaloRuntime(
   config: ZaloRuntimeConfig,
-  readSystemInfo: SystemInfoReader = getSystemInfo,
+  readSystemInfo: SystemInfoReader = readZaloSystemInfo,
 ): Promise<ZaloRuntimeState> {
+  if (config.browserDevelopmentEnabled) {
+    return { phase: 'ready', runtime: 'browser-development' };
+  }
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   try {
@@ -69,17 +75,14 @@ export async function initializeZaloRuntime(
         : { phase: 'configuration-error' };
     }
   } catch {
-    // The official SDK can be unavailable outside the Zalo container. Browser development
-    // remains explicit and does not fall through to any identity or permission API.
+    // SDK loading and bridge failures are contained here; they must not become unhandled rejections.
   } finally {
     if (timeoutId !== undefined) {
       clearTimeout(timeoutId);
     }
   }
 
-  return config.browserDevelopmentEnabled
-    ? { phase: 'ready', runtime: 'browser-development' }
-    : { phase: 'unsupported' };
+  return { phase: 'unsupported' };
 }
 
 export function getRuntimeConfig(): ZaloRuntimeConfig {

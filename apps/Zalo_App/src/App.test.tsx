@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App, APP_NAME } from './App';
@@ -17,6 +18,10 @@ import {
   isBrowserDevelopmentEnabled,
   type ZaloRuntimeState,
 } from './runtime';
+
+const getSystemInfoMock = vi.hoisted(() => vi.fn());
+
+vi.mock('zmp-sdk/apis', () => ({ getSystemInfo: getSystemInfoMock }));
 
 const BROWSER_READY: ZaloRuntimeState = {
   phase: 'ready',
@@ -130,6 +135,9 @@ describe(APP_NAME, () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    getSystemInfoMock.mockReset();
   });
 
   it('forbids mock auth configuration in production', () => {
@@ -142,6 +150,75 @@ describe(APP_NAME, () => {
       }),
     ).toThrow('Mock Central authentication is disabled in production.');
     expect(isBrowserDevelopmentEnabled(false, 'true')).toBe(false);
+  });
+
+  it('bootstraps Mock Central in StrictMode without loading any Zalo SDK API', async () => {
+    vi.stubEnv('APP_ID', 'replace-with-zalo-mini-app-id');
+    vi.stubEnv('VITE_ZALO_MINI_APP_ID', 'replace-with-zalo-mini-app-id');
+    vi.stubEnv('VITE_ZALO_BROWSER_DEVELOPMENT', 'true');
+    vi.stubEnv('VITE_CENTRAL_AUTH_MODE', 'mock');
+    vi.stubEnv('VITE_CENTRAL_API_BASE_URL', 'http://127.0.0.1:3002/api/v1');
+    vi.stubEnv('VITE_MOCK_ZALO_ACCESS_TOKEN', 'mock-zalo-token-user-a');
+    const unhandledRejection = vi.fn();
+    window.addEventListener('unhandledrejection', unhandledRejection);
+    const fetchMock = vi.fn<typeof fetch>(async function (this: unknown, input, init) {
+      if (this !== globalThis) {
+        throw new TypeError('Illegal invocation');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (init?.signal?.aborted === true) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+      const url = String(input);
+      if (url.endsWith('/zalo/auth/exchange')) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              accessToken: 'strict-mode-memory-token',
+              expiresAt: '2099-06-22T08:45:00.000Z',
+              sessionId: 'strict-mode-session',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/locations')) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              items: LOCATIONS,
+              totalItems: LOCATIONS.length,
+              page: 1,
+              pageSize: 20,
+              totalPages: 1,
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      throw new Error(`Unexpected development request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
+
+      await waitFor(() => expect(screen.getByText('Chưa có lượt đang chờ')).toBeTruthy());
+      const urls = fetchMock.mock.calls.map(([input]) => String(input));
+      expect(urls.some((url) => url.endsWith('/zalo/auth/exchange'))).toBe(true);
+      expect(urls.some((url) => url.endsWith('/locations'))).toBe(true);
+      expect(getSystemInfoMock).not.toHaveBeenCalled();
+      expect(unhandledRejection).not.toHaveBeenCalled();
+      expect(screen.queryByText('CONFIGURATION_ERROR')).toBeNull();
+    } finally {
+      window.removeEventListener('unhandledrejection', unhandledRejection);
+    }
   });
 
   it('authenticates, loads locations, and loads services in browser development', async () => {
@@ -352,6 +429,9 @@ describe(APP_NAME, () => {
     render(<App initializeRuntime={initializeBrowser} bookingApi={api} />);
 
     await waitFor(() => expect(screen.getByText('Mock Central chưa sẵn sàng.')).toBeTruthy());
+    expect(screen.getByText('NETWORK_ERROR')).toBeTruthy();
+    expect(screen.getByText('Lỗi kết nối')).toBeTruthy();
+    expect(screen.queryByText('Đang kết nối')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
 
     await waitFor(() => expect(authenticate).toHaveBeenCalledTimes(2));

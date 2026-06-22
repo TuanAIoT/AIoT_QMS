@@ -157,6 +157,13 @@ select {
   line-height: 1.45;
 }
 
+.error-card small {
+  display: block;
+  margin-bottom: 0.65rem;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.7rem;
+}
+
 .error-card button {
   padding: 0.55rem 0.8rem;
   border: 0;

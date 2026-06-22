@@ -57,6 +57,22 @@ describe('CentralApiClient', () => {
     await expect(client.authenticate()).rejects.toMatchObject({ kind: 'TIMEOUT' });
   });
 
+  it('does not call fetch when the external signal is already aborted', async () => {
+    const fetchImplementation = vi.fn<typeof fetch>();
+    const client = new CentralApiClient({
+      baseUrl: 'http://central.test/api/v1',
+      mockZaloAccessToken: 'private-mock-token',
+      fetchImplementation,
+    });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(client.authenticate(controller.signal)).rejects.toMatchObject({
+      kind: 'ABORTED',
+    });
+    expect(fetchImplementation).not.toHaveBeenCalled();
+  });
+
   it('keeps the Central session in memory and sends it only as a Bearer header', async () => {
     const fetchImplementation = vi
       .fn<typeof fetch>()

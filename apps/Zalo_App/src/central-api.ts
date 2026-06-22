@@ -341,6 +341,10 @@ function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
 }
 
+function isSignalAborted(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
+}
+
 function safeErrorMessage(value: unknown): string {
   const code = safeErrorCode(value);
   if (code === 'UNAUTHORIZED') {
@@ -421,7 +425,7 @@ export class CentralApiClient implements BookingApi {
     if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0) {
       throw new CentralApiError('CONFIGURATION', 'Central timeout phải là số dương.');
     }
-    this.fetchImplementation = options.fetchImplementation ?? fetch;
+    this.fetchImplementation = options.fetchImplementation ?? globalThis.fetch.bind(globalThis);
   }
 
   async authenticate(signal?: AbortSignal): Promise<void> {
@@ -501,13 +505,13 @@ export class CentralApiClient implements BookingApi {
     parseData: (value: unknown) => T,
     options: RequestOptions = {},
   ): Promise<T> {
+    if (isSignalAborted(options.signal)) {
+      throw new CentralApiError('ABORTED', 'Yêu cầu đã được hủy.');
+    }
     const controller = new AbortController();
     let timedOut = false;
     const onExternalAbort = (): void => controller.abort();
     options.signal?.addEventListener('abort', onExternalAbort, { once: true });
-    if (options.signal?.aborted === true) {
-      controller.abort();
-    }
     const timeoutId = setTimeout(() => {
       timedOut = true;
       controller.abort();
@@ -562,7 +566,7 @@ export class CentralApiClient implements BookingApi {
       if (timedOut) {
         throw new CentralApiError('TIMEOUT', 'Kết nối Central đã hết thời gian chờ.');
       }
-      if (options.signal?.aborted === true) {
+      if (isSignalAborted(options.signal)) {
         throw new CentralApiError('ABORTED', 'Yêu cầu đã được hủy.');
       }
       throw new CentralApiError('NETWORK', 'Không thể kết nối Mock Central.');

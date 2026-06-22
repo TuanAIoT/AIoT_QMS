@@ -35,6 +35,7 @@ interface ApiSetup {
   readonly api: BookingApi | null;
   readonly isMockMode: boolean;
   readonly error: string | null;
+  readonly errorCode: 'CONFIGURATION_ERROR' | null;
 }
 
 function RuntimeStatus({ state }: { readonly state: ZaloRuntimeState }) {
@@ -78,7 +79,7 @@ export function App({
   const [runtimeState, setRuntimeState] = useState<ZaloRuntimeState>({ phase: 'initializing' });
   const [apiSetup] = useState<ApiSetup>(() => {
     if (bookingApi !== undefined) {
-      return { api: bookingApi, isMockMode: mockMode ?? true, error: null };
+      return { api: bookingApi, isMockMode: mockMode ?? true, error: null, errorCode: null };
     }
     try {
       const config = getCentralAppConfig();
@@ -86,12 +87,14 @@ export function App({
         api: createCentralApiClient(config),
         isMockMode: config.isMockMode,
         error: null,
+        errorCode: null,
       };
     } catch (error) {
       return {
         api: null,
         isMockMode: false,
         error: error instanceof Error ? error.message : 'Cấu hình Central chưa hợp lệ.',
+        errorCode: 'CONFIGURATION_ERROR',
       };
     }
   });
@@ -160,6 +163,7 @@ export function App({
         <section className="error-card" role="alert">
           <strong>Không thể khởi tạo Central</strong>
           <p>{apiSetup.error}</p>
+          {import.meta.env.DEV ? <small>{apiSetup.errorCode}</small> : null}
         </section>
       ) : null}
 
@@ -167,6 +171,7 @@ export function App({
         <section className="error-card" role="alert">
           <strong>Yêu cầu chưa hoàn tất</strong>
           <p>{flow.error.message}</p>
+          {import.meta.env.DEV ? <small>{flow.error.code}</small> : null}
           <button type="button" onClick={flow.retry} disabled={flow.busyAction !== null}>
             Thử lại
           </button>
@@ -180,7 +185,13 @@ export function App({
             <h2 id="queue-form-title">Thông tin lượt chờ</h2>
           </div>
           <span className="pending-badge">
-            {flow.phase === 'ready' ? 'Sẵn sàng' : 'Đang kết nối'}
+            {flow.phase === 'ready'
+              ? 'Sẵn sàng'
+              : flow.phase === 'initializing'
+                ? 'Đang kết nối'
+                : flow.error === null
+                  ? 'Chưa kết nối'
+                  : 'Lỗi kết nối'}
           </span>
         </div>
 
