@@ -1,0 +1,2 @@
+# Native ZMP build output. The converted Vite workflow uses the root-ignored dist/ folder.
+www/

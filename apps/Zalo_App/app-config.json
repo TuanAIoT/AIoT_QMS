@@ -1,0 +1,22 @@
+{
+  "app": {
+    "title": "Xếp hàng dịch vụ công",
+    "headerColor": "#0068ff",
+    "headerTitle": "Xếp hàng dịch vụ công",
+    "textColor": "white",
+    "leftButton": "back",
+    "statusBar": "normal",
+    "actionBarHidden": false,
+    "hideAndroidBottomNavigationBar": false,
+    "hideIOSSafeAreaBottom": false
+  },
+  "debug": false,
+  "listCSS": [
+    "./assets/index.css"
+  ],
+  "listSyncJS": [
+    "inline.js",
+    "./assets/index.module.js"
+  ],
+  "listAsyncJS": []
+}
