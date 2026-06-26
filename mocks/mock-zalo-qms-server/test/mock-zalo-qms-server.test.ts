@@ -8,12 +8,12 @@ let baseUrl: string;
 async function request<T>(
   path: string,
   init: RequestInit = {},
-): Promise<{ readonly status: number; readonly body: T }> {
+): Promise<{ readonly status: number; readonly body: T; readonly response: Response }> {
   const response = await fetch(`${baseUrl}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) },
     ...init,
   });
-  return { status: response.status, body: (await response.json()) as T };
+  return { status: response.status, body: (await response.json()) as T, response };
 }
 
 beforeEach(async () => {
@@ -34,94 +34,126 @@ describe('mock zalo qms server', () => {
     expect(result.body).toEqual({ ok: true });
   });
 
-  it('lists deterministic services without PII', async () => {
-    const result = await request<{
+  it('lists deterministic locations and services without PII', async () => {
+    const locations = await request<{
       readonly ok: true;
-      readonly data: readonly { readonly id: string; readonly code: string; readonly name: string }[];
+      readonly data: readonly { readonly locationId: string; readonly locationName: string }[];
+    }>('/api/zalo/locations');
+    const services = await request<{
+      readonly ok: true;
+      readonly data: readonly { readonly serviceId: string; readonly serviceName: string }[];
     }>('/api/zalo/services');
 
-    expect(result.status).toBe(200);
-    expect(result.body.data).toEqual([
-      { id: 'medical', code: 'A', name: 'Khám bệnh' },
-      { id: 'payment', code: 'B', name: 'Thanh toán' },
-      { id: 'consulting', code: 'C', name: 'Tư vấn' },
-    ]);
-    expect(JSON.stringify(result.body)).not.toMatch(/cccd|phone|email|address|citizen/i);
+    expect(locations.status).toBe(200);
+    expect(locations.body.data).toHaveLength(10);
+    expect(locations.body.data[0]?.locationName).toContain('TRUNG TÂM PHỤC VỤ HÀNH CHÍNH CÔNG');
+    expect(services.status).toBe(200);
+    expect(services.body.data).toHaveLength(5);
+    expect(JSON.stringify({ locations: locations.body, services: services.body })).not.toMatch(
+      /cccd|phone|email|citizen/i,
+    );
   });
 
-  it('creates and fetches a waiting ticket', async () => {
+  it('creates, lists, fetches and cancels a booking', async () => {
     const created = await request<{
       readonly ok: true;
       readonly data: {
         readonly ticketId: string;
         readonly ticketNumber: string;
+        readonly locationId: string;
+        readonly locationName: string;
         readonly serviceId: string;
         readonly serviceName: string;
         readonly status: string;
-        readonly waitingAhead: number;
-        readonly createdAt: string;
+        readonly canCancel: boolean;
       };
     }>('/api/zalo/tickets', {
       method: 'POST',
-      body: JSON.stringify({ serviceId: 'medical' }),
+      body: JSON.stringify({ locationId: 'loc-cumta', serviceId: 'svc-med' }),
     });
 
     expect(created.status).toBe(201);
     expect(created.body.data).toMatchObject({
-      ticketNumber: 'A001',
-      serviceId: 'medical',
-      serviceName: 'Khám bệnh',
+      ticketNumber: '0001',
+      locationId: 'loc-cumta',
+      serviceId: 'svc-med',
       status: 'WAITING',
-      waitingAhead: 0,
+      canCancel: true,
     });
 
-    const fetched = await request<typeof created.body>(
-      `/api/zalo/tickets/${created.body.data.ticketId}`,
-    );
+    const listed = await request<{
+      readonly ok: true;
+      readonly data: readonly { readonly ticketId: string; readonly ticketNumber: string }[];
+    }>('/api/zalo/tickets?locationId=loc-cumta');
+    expect(listed.body.data).toHaveLength(1);
+
+    const fetched = await request<typeof created.body>(`/api/zalo/tickets/${created.body.data.ticketId}`);
     expect(fetched.status).toBe(200);
-    expect(fetched.body.data.ticketNumber).toBe('A001');
+    expect(fetched.body.data.ticketNumber).toBe('0001');
+
+    const cancelled = await request<typeof created.body>(
+      `/api/zalo/tickets/${created.body.data.ticketId}/cancel`,
+      { method: 'POST' },
+    );
+    expect(cancelled.body.data.status).toBe('CANCELLED');
   });
 
   it('rejects unknown fields and invalid service', async () => {
     const unknownField = await request('/api/zalo/tickets', {
       method: 'POST',
-      body: JSON.stringify({ serviceId: 'medical', phone: '0123456789' }),
+      body: JSON.stringify({ locationId: 'loc-cumta', serviceId: 'svc-med', phone: '0123456789' }),
     });
     const invalidService = await request('/api/zalo/tickets', {
       method: 'POST',
-      body: JSON.stringify({ serviceId: 'missing' }),
+      body: JSON.stringify({ locationId: 'loc-cumta', serviceId: 'missing' }),
     });
 
     expect(unknownField.status).toBe(400);
     expect(invalidService.status).toBe(400);
   });
 
-  it('resets state and supports call-next simulation', async () => {
+  it('supports queue status and call-next simulation', async () => {
     await request('/api/zalo/tickets', {
       method: 'POST',
-      body: JSON.stringify({ serviceId: 'medical' }),
+      body: JSON.stringify({ locationId: 'loc-cumta', serviceId: 'svc-med' }),
     });
+    const queueStatus = await request<{
+      readonly ok: true;
+      readonly data: {
+        readonly locationId: string;
+        readonly counters: readonly { readonly counterName: string; readonly currentTicketNumber: string | null }[];
+        readonly waitingTickets: readonly { readonly ticketNumber: string }[];
+      };
+    }>('/api/zalo/locations/loc-cumta/queue-status');
+    expect(queueStatus.body.data.counters).toHaveLength(3);
+    expect(queueStatus.body.data.waitingTickets).toHaveLength(1);
+
     const called = await request<{
       readonly ok: true;
       readonly data: { readonly ticket: { readonly status: string; readonly ticketNumber: string } | null };
     }>('/api/zalo/dev/call-next', { method: 'POST' });
+    expect(called.body.data.ticket).toMatchObject({ ticketNumber: '0001', status: 'CALLED' });
+  });
 
-    expect(called.body.data.ticket).toMatchObject({ ticketNumber: 'A001', status: 'CALLED' });
-
+  it('resets state back to the initial seed', async () => {
+    await request('/api/zalo/tickets', {
+      method: 'POST',
+      body: JSON.stringify({ locationId: 'loc-cumta', serviceId: 'svc-med' }),
+    });
     await request('/api/zalo/dev/reset', { method: 'POST' });
     const createdAfterReset = await request<{
       readonly ok: true;
       readonly data: { readonly ticketNumber: string };
     }>('/api/zalo/tickets', {
       method: 'POST',
-      body: JSON.stringify({ serviceId: 'medical' }),
+      body: JSON.stringify({ locationId: 'loc-cumta', serviceId: 'svc-med' }),
     });
 
-    expect(createdAfterReset.body.data.ticketNumber).toBe('A001');
+    expect(createdAfterReset.body.data.ticketNumber).toBe('0001');
   });
 
   it('handles CORS preflight for browser development', async () => {
-    const response = await fetch(`${baseUrl}/api/zalo/services`, {
+    const response = await fetch(`${baseUrl}/api/zalo/locations`, {
       method: 'OPTIONS',
       headers: { Origin: 'http://127.0.0.1:5173' },
     });

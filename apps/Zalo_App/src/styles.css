@@ -2,7 +2,7 @@
   color: #102033;
   background: #edf4ff;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -16,6 +16,9 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
+  background:
+    radial-gradient(circle at top, rgb(0 104 255 / 10%), transparent 36%),
+    linear-gradient(180deg, #f7fbff, #edf4ff 56%, #eaf1fb);
 }
 
 button,
@@ -39,38 +42,82 @@ button:disabled {
   opacity: 0.55;
 }
 
-.app-shell {
-  width: min(100%, 520px);
-  min-height: 100vh;
-  margin: 0 auto;
-  padding: 18px;
+input,
+select {
+  width: 100%;
+  border: 1px solid #d7e2f2;
+  border-radius: 14px;
+  padding: 14px 16px;
+  color: #102033;
+  background: #ffffff;
 }
 
-.hero {
+.app-shell {
+  width: min(100%, 560px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.runtime-strip {
+  margin-bottom: 12px;
+  border-radius: 18px;
+  padding: 12px 16px;
+  background: rgb(0 104 255 / 10%);
+  color: #064390;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.error-banner,
+.loading-card,
+.hero-banner,
+.info-card,
+.contact-card,
+.context-card,
+.empty-card,
+.status-card,
+.counter-card,
+.waiting-card,
+.placeholder-card,
+.lookup-card,
+.lookup-result-card,
+.ticket-list-card,
+.location-card,
+.service-card,
+.ticket-detail-card,
+.qr-card {
+  margin-top: 14px;
+  border-radius: 24px;
+  padding: 18px;
+  background: #ffffff;
+  box-shadow: 0 12px 34px rgb(29 55 87 / 10%);
+}
+
+.hero-banner {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 22px;
-  border-radius: 28px;
   color: #ffffff;
   background: linear-gradient(135deg, #0068ff, #00a3ff);
   box-shadow: 0 18px 40px rgb(0 104 255 / 22%);
 }
 
-.hero h1 {
+.hero-banner h1 {
   margin: 6px 0;
   font-size: clamp(2rem, 9vw, 3.2rem);
-  line-height: 1;
+  line-height: 1.02;
 }
 
-.hero p {
+.hero-banner p {
   margin: 0;
 }
 
-.eyebrow {
+.hero-kicker,
+.section-kicker,
+.screen-title {
   margin: 0 0 6px;
-  color: inherit;
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -78,34 +125,59 @@ button:disabled {
   opacity: 0.78;
 }
 
-.mock-badge,
-.pending-badge {
+.brand-chip {
   flex: 0 0 auto;
   border-radius: 999px;
   padding: 8px 12px;
   color: #064390;
   background: #ffffff;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 800;
+  text-align: center;
 }
 
-.runtime-card,
-.card,
-.ticket-card,
-.error-card {
-  margin-top: 16px;
-  border-radius: 24px;
-  padding: 18px;
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.menu-card {
+  display: grid;
+  gap: 8px;
+  min-height: 124px;
+  padding: 16px;
+  text-align: left;
+  color: #102033;
   background: #ffffff;
   box-shadow: 0 12px 34px rgb(29 55 87 / 10%);
 }
 
-.runtime-card p,
-.error-card p,
-.ticket-card p,
-footer {
-  margin: 0;
+.menu-card strong {
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+
+.menu-card span {
   color: #5d6c82;
+  font-size: 0.9rem;
+}
+
+.menu-card-icon {
+  width: 38px;
+  height: 38px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #0068ff, #00a3ff);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.section-block {
+  margin-top: 18px;
 }
 
 .section-heading {
@@ -113,48 +185,180 @@ footer {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .section-heading h2,
-.ticket-card h2 {
+.ticket-detail-card h2 {
   margin: 0;
 }
 
-.service-list {
+.info-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.info-card h3 {
+  margin: 0 0 6px;
+}
+
+.info-card p,
+.contact-card p,
+.context-card span,
+.empty-card p,
+.status-card p,
+.counter-card span,
+.waiting-card span,
+.ticket-list-copy span,
+.ticket-detail-card p,
+.lookup-card label,
+.lookup-result-card dd,
+.location-copy span,
+.service-copy span {
+  color: #5d6c82;
+}
+
+.notice-line {
+  margin: 10px 2px 0;
+  color: #064390;
+  font-size: 0.94rem;
+}
+
+.contact-card strong,
+.context-card strong,
+.counter-card strong,
+.waiting-card strong,
+.ticket-list-number,
+.location-copy strong,
+.service-copy strong {
+  display: block;
+  color: #102033;
+}
+
+.flow-screen {
+  display: grid;
+  gap: 14px;
+}
+
+.screen-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 6px;
+  border-radius: 24px;
+  padding: 16px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #0f3d7a, #1f69cf);
+  box-shadow: 0 16px 34px rgb(15 61 122 / 18%);
+}
+
+.back-button {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  padding: 0;
+  color: #0f3d7a;
+  background: #ffffff;
+  font-size: 1.1rem;
+}
+
+.screen-header-copy h1 {
+  margin: 0 0 6px;
+  font-size: clamp(1.7rem, 7vw, 2.3rem);
+  line-height: 1.05;
+}
+
+.screen-header-copy p {
+  margin: 0;
+  color: rgb(255 255 255 / 86%);
+}
+
+.context-card {
+  display: grid;
+  gap: 4px;
+}
+
+.location-list,
+.service-list,
+.ticket-list,
+.counter-list,
+.waiting-list {
   display: grid;
   gap: 12px;
 }
 
-.service-option {
+.location-card {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: 40px 1fr auto;
   align-items: center;
   gap: 12px;
-  min-height: 64px;
-  border: 2px solid #d9e7fb;
-  border-radius: 18px;
-  padding: 12px;
-  background: #f7fbff;
-  font-weight: 700;
+  text-align: left;
+  color: #102033;
 }
 
-.service-option.selected {
+.location-icon {
+  width: 40px;
+  height: 40px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #0068ff, #00a3ff);
+}
+
+.location-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.location-arrow {
+  color: #6c7a90;
+  font-size: 1.2rem;
+}
+
+.service-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  color: #102033;
+  border: 1px solid #dfe8f4;
+  background: #f8fbff;
+}
+
+.service-card.selected {
   border-color: #0068ff;
-  background: #eaf3ff;
+  background: #edf4ff;
 }
 
 .service-code {
   display: inline-grid;
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   place-items: center;
   border-radius: 12px;
   color: #ffffff;
   background: #0068ff;
+  font-weight: 800;
 }
 
-.primary-button {
+.service-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.service-state {
+  color: #0068ff;
+  font-weight: 700;
+}
+
+.primary-button,
+.secondary-button,
+.danger-button {
   width: 100%;
   margin-top: 16px;
 }
@@ -164,99 +368,208 @@ footer {
   background: #eaf3ff;
 }
 
-.hint,
-.empty-text {
-  margin: 10px 0 0;
-  color: #6c7a90;
-  font-size: 0.92rem;
+.danger-button {
+  background: #d92d20;
 }
 
-.error-card {
+.error-banner {
   border: 1px solid #ffd0d0;
   background: #fff6f6;
 }
 
-.error-card strong {
+.error-banner strong {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   color: #b42318;
 }
 
-.error-card button {
+.error-banner p {
+  margin: 0;
+  color: #8b2d21;
+}
+
+.error-banner button {
   margin-top: 12px;
   color: #b42318;
   background: #ffe2e2;
 }
 
-.ticket-card.empty {
+.loading-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.loading-spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgb(0 104 255 / 18%);
+  border-top-color: #0068ff;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-self: flex-start;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-weight: 800;
+}
+
+.status-pill.confirmed {
+  color: #064390;
+  background: #eaf3ff;
+}
+
+.qr-card {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
   text-align: center;
 }
 
-.ticket-card:not(.empty) {
-  color: #ffffff;
-  background: linear-gradient(155deg, #12233d, #1e477f);
+.qr-frame {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 24px;
+  padding: 12px;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px #d9e7fb;
 }
 
-.ticket-card:not(.empty) p,
-.ticket-card:not(.empty) dt {
-  color: rgb(255 255 255 / 78%);
+.qr-frame img {
+  display: block;
+  width: 192px;
+  height: 192px;
+  border-radius: 16px;
 }
 
-.ticket-card h2 {
-  font-size: clamp(3.8rem, 22vw, 7rem);
-  line-height: 1;
-  letter-spacing: 0.06em;
-}
-
-dl {
+.ticket-detail-card dl,
+.lookup-result-card dl {
   display: grid;
   gap: 12px;
-  margin: 20px 0;
+  margin: 18px 0 0;
 }
 
-dl div {
+.ticket-detail-card dl div,
+.lookup-result-card dl div {
   display: flex;
   justify-content: space-between;
   gap: 16px;
 }
 
-dt {
+.ticket-detail-card dt,
+.lookup-result-card dt {
   color: #6c7a90;
 }
 
-dd {
+.ticket-detail-card dd,
+.lookup-result-card dd {
   margin: 0;
   font-weight: 800;
   text-align: right;
 }
 
-.action-row {
+.ticket-list-card {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  color: #102033;
 }
 
-footer {
-  padding: 22px 4px 6px;
-  font-size: 0.85rem;
-  text-align: center;
+.ticket-list-number {
+  min-width: 84px;
+  font-size: 1.1rem;
+  font-weight: 800;
 }
 
-@media (max-width: 380px) {
+.ticket-list-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.ticket-list-time {
+  color: #6c7a90;
+  font-size: 0.9rem;
+}
+
+.status-card {
+  display: grid;
+  gap: 8px;
+}
+
+.counter-card,
+.waiting-card {
+  display: grid;
+  gap: 6px;
+}
+
+.placeholder-card,
+.lookup-card,
+.lookup-result-card {
+  display: grid;
+  gap: 12px;
+}
+
+.lookup-card label {
+  font-weight: 700;
+}
+
+.inline-error {
+  margin: 0;
+  color: #b42318;
+  font-weight: 700;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 420px) {
   .app-shell {
     padding: 12px;
   }
 
-  .hero,
-  .runtime-card,
-  .card,
-  .ticket-card,
-  .error-card {
-    border-radius: 20px;
+  .hero-banner,
+  .screen-header {
     padding: 16px;
   }
 
-  .hero {
-    flex-direction: column;
+  .hero-banner,
+  .info-card,
+  .location-card,
+  .service-card,
+  .ticket-list-card,
+  .screen-header {
+    border-radius: 20px;
+  }
+
+  .menu-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .location-card,
+  .service-card,
+  .ticket-list-card {
+    grid-template-columns: 40px 1fr;
+  }
+
+  .location-arrow,
+  .service-state,
+  .ticket-list-time {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .ticket-list-time {
+    margin-top: -2px;
   }
 }

@@ -38,6 +38,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const currentKeys = Object.keys(value).sort();
+  const expectedKeys = [...keys].sort();
+  return currentKeys.length === expectedKeys.length && currentKeys.every((key, index) => key === expectedKeys[index]);
+}
+
 async function readJson(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -60,21 +66,47 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   }
 }
 
-function requireOnlyServiceId(value: unknown): string {
-  if (!isRecord(value)) {
-    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'Body phải là object.');
+function requireOnlyLocationAndService(value: unknown): { readonly locationId: string; readonly serviceId: string } {
+  if (!isRecord(value) || !exactKeys(value, ['locationId', 'serviceId'])) {
+    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'Body chỉ được chứa locationId và serviceId.');
   }
-  const keys = Object.keys(value);
-  if (keys.length !== 1 || keys[0] !== 'serviceId') {
-    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'Body chỉ được chứa serviceId.');
+  if (typeof value.locationId !== 'string' || value.locationId.trim().length === 0) {
+    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'locationId không hợp lệ.');
   }
   if (typeof value.serviceId !== 'string' || value.serviceId.trim().length === 0) {
     throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'serviceId không hợp lệ.');
   }
-  return value.serviceId;
+  return { locationId: value.locationId, serviceId: value.serviceId };
 }
 
-function decodeTicketId(raw: string): string {
+function requireOptionalLocationId(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value) || !exactKeys(value, ['locationId'])) {
+    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'Body chỉ được chứa locationId.');
+  }
+  if (typeof value.locationId !== 'string' || value.locationId.trim().length === 0) {
+    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'locationId không hợp lệ.');
+  }
+  return value.locationId;
+}
+
+function parseTicketStatus(value: string | null): 'WAITING' | 'CALLED' | 'SERVING' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED' | undefined {
+  if (
+    value === 'WAITING' ||
+    value === 'CALLED' ||
+    value === 'SERVING' ||
+    value === 'COMPLETED' ||
+    value === 'CANCELLED' ||
+    value === 'EXPIRED'
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function parseTicketId(raw: string): string {
   try {
     return decodeURIComponent(raw);
   } catch {
@@ -132,20 +164,61 @@ class NativeMockZaloQmsServer implements MockZaloQmsServer {
         return;
       }
 
+      if (method === 'GET' && url.pathname === '/api/zalo/locations') {
+        this.sendSuccess(response, this.state.listLocations());
+        return;
+      }
+
+      const locationMatch = url.pathname.match(/^\/api\/zalo\/locations\/([^/]+)$/);
+      if (method === 'GET' && locationMatch?.[1] !== undefined) {
+        this.sendSuccess(response, this.state.getLocation(parseTicketId(locationMatch[1])));
+        return;
+      }
+
+      const servicesMatch = url.pathname.match(/^\/api\/zalo\/locations\/([^/]+)\/services$/);
+      if (method === 'GET' && servicesMatch?.[1] !== undefined) {
+        this.sendSuccess(response, this.state.listServices(parseTicketId(servicesMatch[1])));
+        return;
+      }
+
       if (method === 'GET' && url.pathname === '/api/zalo/services') {
-        this.sendSuccess(response, this.state.listServices());
+        this.sendSuccess(response, this.state.listServices(url.searchParams.get('locationId') ?? undefined));
+        return;
+      }
+
+      const queueStatusMatch = url.pathname.match(/^\/api\/zalo\/locations\/([^/]+)\/queue-status$/);
+      if (method === 'GET' && queueStatusMatch?.[1] !== undefined) {
+        this.sendSuccess(response, this.state.getQueueStatus(parseTicketId(queueStatusMatch[1])));
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/zalo/tickets') {
+        this.sendSuccess(
+          response,
+          this.state.listTickets(
+            url.searchParams.get('locationId') ?? undefined,
+            parseTicketStatus(url.searchParams.get('status')),
+          ),
+        );
         return;
       }
 
       if (method === 'POST' && url.pathname === '/api/zalo/tickets') {
-        const ticket = this.state.createTicket(requireOnlyServiceId(await readJson(request)));
+        const body = requireOnlyLocationAndService(await readJson(request));
+        const ticket = this.state.createTicket(body.locationId, body.serviceId);
         this.sendSuccess(response, ticket, 201);
         return;
       }
 
       const ticketMatch = url.pathname.match(/^\/api\/zalo\/tickets\/([^/]+)$/);
       if (method === 'GET' && ticketMatch?.[1] !== undefined) {
-        this.sendSuccess(response, this.state.getTicket(decodeTicketId(ticketMatch[1])));
+        this.sendSuccess(response, this.state.getTicket(parseTicketId(ticketMatch[1])));
+        return;
+      }
+
+      const cancelMatch = url.pathname.match(/^\/api\/zalo\/tickets\/([^/]+)\/cancel$/);
+      if (method === 'POST' && cancelMatch?.[1] !== undefined) {
+        this.sendSuccess(response, this.state.cancelTicket(parseTicketId(cancelMatch[1])));
         return;
       }
 
@@ -156,7 +229,10 @@ class NativeMockZaloQmsServer implements MockZaloQmsServer {
       }
 
       if (method === 'POST' && url.pathname === '/api/zalo/dev/call-next') {
-        this.sendSuccess(response, { ticket: this.state.callNext() });
+        const raw = await readJson(request);
+        const locationId =
+          isRecord(raw) && Object.keys(raw).length === 0 ? undefined : requireOptionalLocationId(raw);
+        this.sendSuccess(response, { ticket: this.state.callNext(locationId) });
         return;
       }
 

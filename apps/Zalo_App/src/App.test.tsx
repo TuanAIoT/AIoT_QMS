@@ -5,32 +5,107 @@ import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
-import type { QmsApiClient, QmsService, QmsTicket } from './qms-api';
+import type { QmsBookingApiClient, QmsLocation, QmsQueueStatus, QmsService, QmsTicket } from './qms-api';
+
+const LOCATIONS: readonly QmsLocation[] = [
+  {
+    locationId: 'loc-001',
+    locationName: 'TRUNG TÂM PHỤC VỤ HÀNH CHÍNH CÔNG XÃ CƯ MTA',
+    address: '123 Đường Demo, Xã Cư Mta',
+    bookingEnabled: true,
+  },
+  {
+    locationId: 'loc-002',
+    locationName: 'AIoT Making Innovation',
+    address: 'Khu thử nghiệm AIoT, TP. Hồ Chí Minh',
+    bookingEnabled: true,
+  },
+];
 
 const SERVICES: readonly QmsService[] = [
-  { id: 'medical', code: 'A', name: 'Khám bệnh' },
-  { id: 'payment', code: 'B', name: 'Thanh toán' },
-  { id: 'consulting', code: 'C', name: 'Tư vấn' },
+  {
+    serviceId: 'svc-med',
+    serviceCode: 'A',
+    serviceName: 'Khám bệnh',
+    description: 'Dịch vụ khám tổng quát',
+    bookingEnabled: true,
+  },
+  {
+    serviceId: 'svc-pay',
+    serviceCode: 'B',
+    serviceName: 'Thanh toán',
+    description: 'Thanh toán phí dịch vụ',
+    bookingEnabled: true,
+  },
 ];
+
+const FIRST_LOCATION = LOCATIONS[0]!;
+const FIRST_SERVICE = SERVICES[0]!;
 
 function createTicket(overrides: Partial<QmsTicket> = {}): QmsTicket {
   return {
     ticketId: 'ticket-demo-001',
-    ticketNumber: 'A001',
-    serviceId: 'medical',
-    serviceName: 'Khám bệnh',
+    ticketNumber: '0011',
+    locationId: FIRST_LOCATION.locationId,
+    locationName: FIRST_LOCATION.locationName,
+    serviceId: FIRST_SERVICE.serviceId,
+    serviceName: FIRST_SERVICE.serviceName,
     status: 'WAITING',
-    waitingAhead: 3,
     createdAt: '2026-06-26T00:00:00.000Z',
+    updatedAt: '2026-06-26T00:05:00.000Z',
+    checkInExpiresAt: '2026-06-26T01:00:00.000Z',
+    qrPayload: 'qms-booking-demo-payload',
+    canCancel: true,
     ...overrides,
   };
 }
 
-function createApi(overrides: Partial<QmsApiClient> = {}): QmsApiClient {
+function createQueueStatus(): QmsQueueStatus {
   return {
+    locationId: FIRST_LOCATION.locationId,
+    locationName: FIRST_LOCATION.locationName,
+    bookingEnabled: true,
+    currentDate: '2026-06-26T00:10:00.000Z',
+    counters: [
+      {
+        counterId: 'counter-01',
+        counterName: 'Quầy 01',
+        status: 'OPEN',
+        currentTicketNumber: '0011',
+        servingServiceName: 'Khám bệnh',
+        updatedAt: '2026-06-26T00:10:00.000Z',
+      },
+      {
+        counterId: 'counter-02',
+        counterName: 'Quầy 02',
+        status: 'OPEN',
+        currentTicketNumber: null,
+        servingServiceName: null,
+        updatedAt: '2026-06-26T00:10:00.000Z',
+      },
+    ],
+    waitingTickets: [createTicket()],
+  };
+}
+
+function createApi(overrides: Partial<QmsBookingApiClient> = {}): QmsBookingApiClient {
+  return {
+    getLocations: vi.fn(async () => LOCATIONS),
+    getLocation: vi.fn(async (locationId: string) => {
+      const location = LOCATIONS.find((item) => item.locationId === locationId);
+      if (location === undefined) {
+        throw new Error('Not found');
+      }
+      return location;
+    }),
     getServices: vi.fn(async () => SERVICES),
     createTicket: vi.fn(async () => createTicket()),
-    getTicket: vi.fn(async () => createTicket()),
+    listTickets: vi.fn(async () => []),
+    getTicket: vi.fn(async () => createTicket({ status: 'CALLED' })),
+    cancelTicket: vi.fn(async () => createTicket({ status: 'CANCELLED', canCancel: false })),
+    getQueueStatus: vi.fn(async () => createQueueStatus()),
+    callNext: vi.fn(async () => ({ ticket: createTicket({ status: 'CALLED' }) })),
+    resetDevelopmentData: vi.fn(async () => ({ reset: true as const })),
     ...overrides,
   };
 }
@@ -46,60 +121,81 @@ function renderApp(api = createApi()) {
   );
 }
 
-describe('Zalo App QMS MVP', () => {
+describe('Zalo App booking flow', () => {
   afterEach(() => {
     cleanup();
   });
 
-  it('renders the Vietnamese app shell and empty state', async () => {
+  it('renders the home menu and brand sections', async () => {
     renderApp();
 
     expect(await screen.findByRole('heading', { name: 'Tuan QMS' })).toBeTruthy();
-    expect(screen.getByText('Zalo Mini App lấy số thứ tự')).toBeTruthy();
-    expect(screen.getByText('Chưa có lượt đang chờ')).toBeTruthy();
-    expect(await screen.findByRole('radio', { name: /Khám bệnh/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Đặt số trực tuyến/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Số đã đặt/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Tình hình số thứ tự/ })).toBeTruthy();
+    expect(screen.getByText('OA chính thức của đơn vị')).toBeTruthy();
+    expect(screen.getByText('Danh bạ')).toBeTruthy();
   });
 
-  it('does not create a ticket before selecting a service', async () => {
-    const api = createApi();
-    renderApp(api);
-
-    const button = await screen.findByRole('button', { name: 'Lấy số thứ tự' });
-    expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(api.createTicket).not.toHaveBeenCalled();
-  });
-
-  it('creates a ticket after service selection', async () => {
-    const api = createApi();
-    renderApp(api);
-
-    fireEvent.click(await screen.findByRole('radio', { name: /Khám bệnh/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Lấy số thứ tự' }));
-
-    await waitFor(() => expect(api.createTicket).toHaveBeenCalledWith('medical', expect.any(AbortSignal)));
-    expect(await screen.findByRole('heading', { name: 'A001' })).toBeTruthy();
-    expect(screen.getByText('Đang chờ')).toBeTruthy();
-    expect(screen.getByText('3')).toBeTruthy();
-  });
-
-  it('updates ticket status from the API', async () => {
+  it('walks through booking creation and shows the booked detail', async () => {
     const api = createApi({
-      getTicket: vi.fn(async () => createTicket({ status: 'CALLED', waitingAhead: 0 })),
+      createTicket: vi.fn(async () =>
+        createTicket({
+          ticketId: 'ticket-demo-011',
+          ticketNumber: '0011',
+          locationId: FIRST_LOCATION.locationId,
+          locationName: FIRST_LOCATION.locationName,
+          serviceId: FIRST_SERVICE.serviceId,
+          serviceName: FIRST_SERVICE.serviceName,
+          qrPayload: 'booking-qr-demo',
+        }),
+      ),
     });
     renderApp(api);
 
-    fireEvent.click(await screen.findByRole('radio', { name: /Khám bệnh/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Đặt số trực tuyến/ }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(FIRST_LOCATION.locationName) }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(FIRST_SERVICE.serviceName) }));
     fireEvent.click(screen.getByRole('button', { name: 'Lấy số thứ tự' }));
-    await screen.findByRole('heading', { name: 'A001' });
-    fireEvent.click(screen.getByRole('button', { name: 'Cập nhật trạng thái' }));
 
-    await waitFor(() => expect(api.getTicket).toHaveBeenCalledWith('ticket-demo-001', expect.any(AbortSignal)));
-    expect(await screen.findByText('Đã được gọi')).toBeTruthy();
+    await waitFor(() =>
+      expect(api.createTicket).toHaveBeenCalledWith({
+        locationId: FIRST_LOCATION.locationId,
+        serviceId: FIRST_SERVICE.serviceId,
+      }),
+    );
+    expect(await screen.findByRole('heading', { name: '#0011' })).toBeTruthy();
+    expect(await screen.findByRole('img', { name: 'Mã QR của booking' })).toBeTruthy();
+    expect(screen.getByText(FIRST_LOCATION.locationName)).toBeTruthy();
+    expect(screen.getByText(FIRST_SERVICE.serviceName)).toBeTruthy();
   });
 
-  it('shows a clear connection error when API fails', async () => {
+  it('shows the booked list empty state', async () => {
+    const api = createApi({ listTickets: vi.fn(async () => []) });
+    renderApp(api);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Số đã đặt/ }));
+
+    expect(await screen.findByText('Bạn chưa có số đã đặt')).toBeTruthy();
+    expect(api.listTickets).toHaveBeenCalled();
+  });
+
+  it('shows queue status and waiting tickets', async () => {
+    const api = createApi({ getQueueStatus: vi.fn(async () => createQueueStatus()) });
+    renderApp(api);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Tình hình số thứ tự/ }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(FIRST_LOCATION.locationName) }));
+
+    expect(await screen.findByText('Trạng thái hiện tại')).toBeTruthy();
+    expect(screen.getByText('Danh sách quầy')).toBeTruthy();
+    expect(screen.getByText('Danh sách chờ')).toBeTruthy();
+    expect(screen.getByText('#0011')).toBeTruthy();
+  });
+
+  it('shows a clear error state when the API fails', async () => {
     const api = createApi({
-      getServices: vi.fn(async () => {
+      getLocations: vi.fn(async () => {
         throw new Error('Không kết nối được máy chủ thử nghiệm.');
       }),
     });
@@ -109,10 +205,17 @@ describe('Zalo App QMS MVP', () => {
     expect(alert.textContent).toContain('Không kết nối được máy chủ thử nghiệm');
   });
 
-  it('does not render PII fields', async () => {
+  it('supports mock case lookup without PII', async () => {
     renderApp();
 
-    await screen.findByRole('radio', { name: /Khám bệnh/ });
+    fireEvent.click(await screen.findByRole('button', { name: /Tra cứu hồ sơ/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tra cứu' }));
+    expect(screen.getByText('Vui lòng nhập mã hồ sơ.')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Mã hồ sơ'), { target: { value: 'HS-2026-001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Tra cứu' }));
+
+    expect(await screen.findByText('Dữ liệu mô phỏng')).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/cccd|phone|email|số điện thoại/i);
   });
 });
