@@ -159,7 +159,7 @@ describe('mock zalo qms server', () => {
     });
 
     expect(response.status).toBe(204);
-    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://127.0.0.1:5173');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
     expect(response.headers.get('Access-Control-Allow-Methods')).toContain('GET');
     expect(response.headers.get('Access-Control-Allow-Headers')).toContain('Content-Type');
   });

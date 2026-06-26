@@ -1,8 +1,7 @@
 export interface QmsLocation {
   readonly locationId: string;
   readonly locationName: string;
-  readonly address: string | null;
-  readonly bookingEnabled: boolean;
+  readonly address: string;
 }
 
 export interface QmsService {
@@ -156,16 +155,14 @@ function parseLocation(value: unknown): QmsLocation {
     !isRecord(value) ||
     !hasText(value.locationId) ||
     !hasText(value.locationName) ||
-    (value.address !== null && !hasText(value.address)) ||
-    typeof value.bookingEnabled !== 'boolean'
+    !hasText(value.address)
   ) {
     throw new QmsApiError('INVALID_RESPONSE', 'Dữ liệu địa điểm không hợp lệ.');
   }
   return {
     locationId: value.locationId,
     locationName: value.locationName,
-    address: value.address ?? null,
-    bookingEnabled: value.bookingEnabled,
+    address: value.address,
   };
 }
 

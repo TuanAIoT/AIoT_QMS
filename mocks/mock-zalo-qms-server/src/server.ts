@@ -5,11 +5,14 @@ import { randomUUID } from 'node:crypto';
 import { MockZaloQmsError, MockZaloQmsState } from './state.js';
 
 const MAX_BODY_BYTES = 16 * 1024;
-const DEFAULT_CORS_ORIGINS = ['http://127.0.0.1:5173', 'http://localhost:5173'] as const;
 const ALLOW_METHODS = 'GET, POST, OPTIONS';
-const ALLOW_HEADERS = 'Content-Type, X-Request-ID';
+const ALLOW_HEADERS = 'Content-Type, Authorization, X-Request-ID';
 
 export interface MockZaloQmsServerOptions {
+  /**
+   * Reserved for future stricter CORS policies.
+   * Development mock API currently allows all origins so Zalo WebView can call it.
+   */
   readonly corsOrigins?: readonly string[];
 }
 
@@ -117,10 +120,9 @@ function parseTicketId(raw: string): string {
 class NativeMockZaloQmsServer implements MockZaloQmsServer {
   readonly state = new MockZaloQmsState();
   private readonly httpServer: Server;
-  private readonly corsOrigins: ReadonlySet<string>;
 
-  constructor(options: MockZaloQmsServerOptions = {}) {
-    this.corsOrigins = new Set(options.corsOrigins ?? DEFAULT_CORS_ORIGINS);
+
+  constructor(_options: MockZaloQmsServerOptions = {}) {
     this.httpServer = createServer((request, response) => {
       void this.handleRequest(request, response);
     });
@@ -148,7 +150,7 @@ class NativeMockZaloQmsServer implements MockZaloQmsServer {
   }
 
   private async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    this.applyHeaders(request, response);
+    this.applyHeaders(response);
     try {
       if (request.method === 'OPTIONS') {
         response.writeHead(204);
@@ -246,14 +248,11 @@ class NativeMockZaloQmsServer implements MockZaloQmsServer {
     }
   }
 
-  private applyHeaders(request: IncomingMessage, response: ServerResponse): void {
-    const origin = request.headers.origin;
-    if (typeof origin === 'string' && this.corsOrigins.has(origin)) {
-      response.setHeader('Access-Control-Allow-Origin', origin);
-    }
+  private applyHeaders(response: ServerResponse): void {
+    response.setHeader('Access-Control-Allow-Origin', '*');
     response.setHeader('Access-Control-Allow-Methods', ALLOW_METHODS);
     response.setHeader('Access-Control-Allow-Headers', ALLOW_HEADERS);
-    response.setHeader('Vary', 'Origin');
+    response.setHeader('Access-Control-Max-Age', '86400');
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Request-ID', randomUUID());
     response.setHeader('X-QMS-Mock', 'zalo-development-only');

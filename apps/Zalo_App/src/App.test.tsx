@@ -5,6 +5,7 @@ import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
+import { QmsApiError } from './qms-api';
 import type { QmsBookingApiClient, QmsLocation, QmsQueueStatus, QmsService, QmsTicket } from './qms-api';
 
 const LOCATIONS: readonly QmsLocation[] = [
@@ -12,13 +13,11 @@ const LOCATIONS: readonly QmsLocation[] = [
     locationId: 'loc-001',
     locationName: 'TRUNG TÂM PHỤC VỤ HÀNH CHÍNH CÔNG XÃ CƯ MTA',
     address: '123 Đường Demo, Xã Cư Mta',
-    bookingEnabled: true,
   },
   {
     locationId: 'loc-002',
     locationName: 'AIoT Making Innovation',
     address: 'Khu thử nghiệm AIoT, TP. Hồ Chí Minh',
-    bookingEnabled: true,
   },
 ];
 
@@ -135,6 +134,19 @@ describe('Zalo App booking flow', () => {
     expect(screen.getByRole('button', { name: /Tình hình số thứ tự/ })).toBeTruthy();
     expect(screen.getByText('OA chính thức của đơn vị')).toBeTruthy();
     expect(screen.getByText('Danh bạ')).toBeTruthy();
+  });
+
+  it('shows a schema error when the server response is malformed', async () => {
+    const api = createApi({
+      getLocations: vi.fn(async () => {
+        throw new QmsApiError('INVALID_RESPONSE', 'Dữ liệu địa điểm không hợp lệ.');
+      }),
+    });
+    renderApp(api);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Dữ liệu từ máy chủ thử nghiệm không đúng định dạng');
+    expect(alert.textContent).not.toContain('Không kết nối được máy chủ thử nghiệm');
   });
 
   it('walks through booking creation and shows the booked detail', async () => {

@@ -45,7 +45,12 @@ type LoadingAction =
 type RetryTarget = Exclude<LoadingAction, null>;
 
 interface UiError {
-  readonly code: 'CONFIGURATION_ERROR' | 'REQUEST_ABORTED' | 'AUTH_FAILED' | 'NETWORK_ERROR';
+  readonly code:
+    | 'CONFIGURATION_ERROR'
+    | 'REQUEST_ABORTED'
+    | 'AUTH_FAILED'
+    | 'SCHEMA_ERROR'
+    | 'NETWORK_ERROR';
   readonly message: string;
   readonly retryTarget: RetryTarget;
 }
@@ -69,10 +74,22 @@ interface HomeMenuItem {
 }
 
 const HOME_MENU_ITEMS: readonly HomeMenuItem[] = [
-  { title: 'Đặt số trực tuyến', subtitle: 'Chọn địa điểm và dịch vụ', screen: 'booking-location' },
+  {
+    title: 'Đặt số trực tuyến',
+    subtitle: 'Chọn địa điểm và dịch vụ',
+    screen: 'booking-location',
+  },
   { title: 'Số đã đặt', subtitle: 'Xem các lượt đã tạo', screen: 'booked-list' },
-  { title: 'Tình hình số thứ tự', subtitle: 'Theo dõi tình trạng phục vụ', screen: 'queue-location' },
-  { title: 'Cổng dịch vụ công quốc gia', subtitle: 'Chức năng sẽ tích hợp sau', screen: 'public-service' },
+  {
+    title: 'Tình hình số thứ tự',
+    subtitle: 'Theo dõi tình trạng phục vụ',
+    screen: 'queue-location',
+  },
+  {
+    title: 'Cổng dịch vụ công quốc gia',
+    subtitle: 'Chức năng sẽ tích hợp sau',
+    screen: 'public-service',
+  },
   { title: 'Tra cứu hồ sơ', subtitle: 'Mã hồ sơ mô phỏng', screen: 'case-lookup' },
 ];
 
@@ -141,6 +158,13 @@ function mapApiError(error: unknown, retryTarget: RetryTarget): UiError {
         retryTarget,
       };
     }
+    if (error.kind === 'INVALID_RESPONSE') {
+      return {
+        code: 'SCHEMA_ERROR',
+        message: 'Dữ liệu từ máy chủ thử nghiệm không đúng định dạng.',
+        retryTarget,
+      };
+    }
     return {
       code: 'NETWORK_ERROR',
       message: error.message,
@@ -202,6 +226,8 @@ function ErrorBanner({
             ? 'Yêu cầu đã bị hủy'
             : error.code === 'AUTH_FAILED'
               ? 'Xác thực không thành công'
+              : error.code === 'SCHEMA_ERROR'
+                ? 'Dữ liệu từ máy chủ thử nghiệm không hợp lệ'
               : 'Không kết nối được máy chủ thử nghiệm'}
       </strong>
       <p>{error.message}</p>
@@ -316,7 +342,15 @@ function HomeScreen({
             onClick={() => onNavigate(item.screen)}
           >
             <span className="menu-card-icon" aria-hidden="true">
-              ●
+              {item.screen === 'booking-location'
+                ? '📅'
+                : item.screen === 'booked-list'
+                  ? '📘'
+                  : item.screen === 'queue-location'
+                    ? '🌐'
+                    : item.screen === 'public-service'
+                      ? '🌐'
+                      : '🔎'}
             </span>
             <strong>{item.title}</strong>
             <span>{item.subtitle}</span>
