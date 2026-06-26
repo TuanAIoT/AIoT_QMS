@@ -1,46 +1,30 @@
-import { QRCodeSVG } from 'qrcode.react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { type BookingApi, createCentralApiClient, getCentralAppConfig } from './central-api';
+import { createQmsApiClient, QmsApiError, type QmsApiClient, type QmsService, type QmsTicket } from './qms-api';
 import { getRuntimeConfig, initializeZaloRuntime, type ZaloRuntimeState } from './runtime';
-import { useBookingFlow } from './use-booking-flow';
 import './styles.css';
 
-export const APP_NAME = 'Xếp hàng dịch vụ công';
-
-const STATUS_LABELS = {
-  CREATED: 'Đã tạo',
-  CONFIRMED: 'Đã xác nhận',
-  READY_FOR_CHECK_IN: 'Sẵn sàng check-in',
-  CHECKED_IN: 'Đã check-in',
-  QUEUED: 'Đang trong hàng chờ',
-  CALLED: 'Đang được gọi',
-  SERVING: 'Đang phục vụ',
-  COMPLETED: 'Đã hoàn thành',
-  CANCELLED: 'Đã hủy',
-  EXPIRED: 'Đã hết hạn',
-} as const;
+export const APP_NAME = 'Tuan QMS';
 
 export interface AppProps {
+  readonly apiClient?: QmsApiClient;
   readonly initializeRuntime?: () => Promise<ZaloRuntimeState>;
-  readonly bookingApi?: BookingApi;
-  readonly mockMode?: boolean;
-  readonly pollIntervalMs?: number;
-  readonly createIdempotencyKey?: () => string;
-  readonly now?: () => Date;
-  readonly confirmCancel?: () => boolean;
 }
 
-interface ApiSetup {
-  readonly api: BookingApi | null;
-  readonly isMockMode: boolean;
-  readonly error: string | null;
-  readonly errorCode: 'CONFIGURATION_ERROR' | null;
+function statusLabel(status: QmsTicket['status']): string {
+  return status === 'WAITING' ? 'Đang chờ' : 'Đã được gọi';
 }
 
-function RuntimeStatus({ state }: { readonly state: ZaloRuntimeState }) {
+function safeErrorMessage(error: unknown): string {
+  if (error instanceof QmsApiError) {
+    return error.message;
+  }
+  return 'Không kết nối được máy chủ thử nghiệm.';
+}
+
+function RuntimeBanner({ state }: { readonly state: ZaloRuntimeState }) {
   if (state.phase === 'initializing') {
-    return <p role="status">Đang khởi tạo ứng dụng...</p>;
+    return <p role="status">Đang khởi tạo Zalo Mini App...</p>;
   }
   if (state.phase === 'configuration-error') {
     return <p role="alert">Cấu hình Zalo Mini App chưa đầy đủ.</p>;
@@ -57,53 +41,41 @@ function RuntimeStatus({ state }: { readonly state: ZaloRuntimeState }) {
   );
 }
 
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? 'Chưa xác định'
-    : new Intl.DateTimeFormat('vi-VN', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      }).format(date);
-}
-
-export function App({
-  initializeRuntime: initializeRuntimeOverride,
-  bookingApi,
-  mockMode,
-  pollIntervalMs,
-  createIdempotencyKey,
-  now,
-  confirmCancel,
-}: AppProps = {}) {
+export function App({ apiClient, initializeRuntime }: AppProps = {}) {
+  const api = useMemo(() => apiClient ?? createQmsApiClient(), [apiClient]);
   const [runtimeState, setRuntimeState] = useState<ZaloRuntimeState>({ phase: 'initializing' });
-  const [apiSetup] = useState<ApiSetup>(() => {
-    if (bookingApi !== undefined) {
-      return { api: bookingApi, isMockMode: mockMode ?? true, error: null, errorCode: null };
-    }
-    try {
-      const config = getCentralAppConfig();
-      return {
-        api: createCentralApiClient(config),
-        isMockMode: config.isMockMode,
-        error: null,
-        errorCode: null,
-      };
-    } catch (error) {
-      return {
-        api: null,
-        isMockMode: false,
-        error: error instanceof Error ? error.message : 'Cấu hình Central chưa hợp lệ.',
-        errorCode: 'CONFIGURATION_ERROR',
-      };
-    }
-  });
+  const [services, setServices] = useState<readonly QmsService[]>([]);
+  const [selectedServiceId, setSelectedServiceId] = useState<QmsService['id'] | ''>('');
+  const [ticket, setTicket] = useState<QmsTicket | null>(null);
+  const [loadingAction, setLoadingAction] = useState<'services' | 'create' | 'status' | null>(
+    'services',
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  const loadServices = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setLoadingAction('services');
+      setError(null);
+      try {
+        const loaded = await api.getServices(signal);
+        setServices(loaded);
+      } catch (caught) {
+        if (signal?.aborted !== true) {
+          setError(safeErrorMessage(caught));
+        }
+      } finally {
+        if (signal?.aborted !== true) {
+          setLoadingAction(null);
+        }
+      }
+    },
+    [api],
+  );
 
   useEffect(() => {
     let active = true;
-    const initialize =
-      initializeRuntimeOverride ?? (() => initializeZaloRuntime(getRuntimeConfig()));
-    void initialize()
+    const init = initializeRuntime ?? (() => initializeZaloRuntime(getRuntimeConfig()));
+    void init()
       .then((state) => {
         if (active) {
           setRuntimeState(state);
@@ -117,220 +89,162 @@ export function App({
     return () => {
       active = false;
     };
-  }, [initializeRuntimeOverride]);
+  }, [initializeRuntime]);
 
-  const runtimeReady = runtimeState.phase === 'ready';
-  const flow = useBookingFlow({
-    api: apiSetup.api,
-    enabled: runtimeReady && apiSetup.error === null,
-    ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
-    ...(createIdempotencyKey === undefined ? {} : { createKey: createIdempotencyKey }),
-    ...(now === undefined ? {} : { now }),
-    ...(confirmCancel === undefined ? {} : { confirmCancel }),
-  });
-  const selectedLocation = flow.locations.find(
-    (location) => location.locationId === flow.selectedLocationId,
-  );
-  const selectedService = flow.services.find(
-    (service) => service.serviceId === flow.selectedServiceId,
-  );
-  const formDisabled = flow.busyAction !== null || flow.booking !== null;
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadServices(controller.signal);
+    return () => controller.abort();
+  }, [loadServices]);
+
+  const selectedService = services.find((service) => service.id === selectedServiceId);
+  const busy = loadingAction !== null;
+
+  const handleCreateTicket = async (): Promise<void> => {
+    if (selectedServiceId === '' || busy) {
+      return;
+    }
+    const controller = new AbortController();
+    setLoadingAction('create');
+    setError(null);
+    try {
+      setTicket(await api.createTicket(selectedServiceId, controller.signal));
+    } catch (caught) {
+      setError(safeErrorMessage(caught));
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleRefreshStatus = async (): Promise<void> => {
+    if (ticket === null || busy) {
+      return;
+    }
+    const controller = new AbortController();
+    setLoadingAction('status');
+    setError(null);
+    try {
+      setTicket(await api.getTicket(ticket.ticketId, controller.signal));
+    } catch (caught) {
+      setError(safeErrorMessage(caught));
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const resetCurrentTicket = (): void => {
+    setTicket(null);
+    setError(null);
+  };
 
   return (
     <main className="app-shell">
-      <header className="app-header">
-        <span className="app-mark" aria-hidden="true">
-          Q
-        </span>
-        <div className="app-title">
-          <p className="app-kicker">Dịch vụ hành chính</p>
+      <header className="hero">
+        <div>
+          <p className="eyebrow">Zalo Mini App</p>
           <h1>{APP_NAME}</h1>
+          <p>Zalo Mini App lấy số thứ tự</p>
         </div>
-        {apiSetup.isMockMode ? <span className="demo-badge">Chế độ thử nghiệm</span> : null}
+        <span className="mock-badge">Mock API</span>
       </header>
 
-      <section className="runtime-card" aria-label="Trạng thái môi trường">
-        <RuntimeStatus state={runtimeState} />
+      <section className="runtime-card" aria-label="Trạng thái runtime">
+        <RuntimeBanner state={runtimeState} />
       </section>
 
-      <section className="welcome-card">
-        <p className="eyebrow">Đặt lượt trực tuyến</p>
-        <h2>Chủ động thời gian, giảm thời gian chờ</h2>
-        <p>Chọn điểm phục vụ và dịch vụ để tạo lượt thử nghiệm.</p>
-      </section>
-
-      {apiSetup.error !== null && runtimeReady ? (
+      {error !== null ? (
         <section className="error-card" role="alert">
-          <strong>Không thể khởi tạo Central</strong>
-          <p>{apiSetup.error}</p>
-          {import.meta.env.DEV ? <small>{apiSetup.errorCode}</small> : null}
-        </section>
-      ) : null}
-
-      {flow.error !== null ? (
-        <section className="error-card" role="alert">
-          <strong>Yêu cầu chưa hoàn tất</strong>
-          <p>{flow.error.message}</p>
-          {import.meta.env.DEV ? <small>{flow.error.code}</small> : null}
-          <button type="button" onClick={flow.retry} disabled={flow.busyAction !== null}>
-            Thử lại
+          <strong>Không kết nối được máy chủ thử nghiệm</strong>
+          <p>{error}</p>
+          <button type="button" onClick={() => void loadServices()} disabled={busy}>
+            Thử tải lại dịch vụ
           </button>
         </section>
       ) : null}
 
-      <section className="form-card" aria-labelledby="queue-form-title">
+      <section className="card" aria-labelledby="service-title">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Lấy số trực tuyến</p>
-            <h2 id="queue-form-title">Thông tin lượt chờ</h2>
+            <p className="eyebrow">Bước 1</p>
+            <h2 id="service-title">Chọn dịch vụ</h2>
           </div>
-          <span className="pending-badge">
-            {flow.phase === 'ready'
-              ? 'Sẵn sàng'
-              : flow.phase === 'initializing'
-                ? 'Đang kết nối'
-                : flow.error === null
-                  ? 'Chưa kết nối'
-                  : 'Lỗi kết nối'}
-          </span>
+          {loadingAction === 'services' ? <span role="status">Đang tải...</span> : null}
         </div>
 
-        <label htmlFor="location">Điểm phục vụ</label>
-        <select
-          id="location"
-          value={flow.selectedLocationId}
-          disabled={flow.phase !== 'ready' || formDisabled}
-          onChange={(event) => flow.selectLocation(event.target.value)}
-        >
-          <option value="">Chọn điểm phục vụ</option>
-          {flow.locations.map((location) => (
-            <option key={location.locationId} value={location.locationId}>
-              {location.displayName}
-            </option>
-          ))}
-        </select>
+        {services.length === 0 && loadingAction !== 'services' ? (
+          <p className="empty-text">Chưa có dịch vụ để hiển thị.</p>
+        ) : null}
 
-        <label htmlFor="service">Dịch vụ</label>
-        <select
-          id="service"
-          value={flow.selectedServiceId}
-          disabled={
-            flow.phase !== 'ready' ||
-            flow.selectedLocationId.length === 0 ||
-            flow.busyAction === 'services' ||
-            formDisabled
-          }
-          onChange={(event) => flow.selectService(event.target.value)}
-        >
-          <option value="">
-            {flow.busyAction === 'services' ? 'Đang tải dịch vụ...' : 'Chọn dịch vụ'}
-          </option>
-          {flow.services.map((service) => (
-            <option key={service.serviceId} value={service.serviceId}>
-              {service.displayName}
-            </option>
+        <div className="service-list" role="radiogroup" aria-label="Danh sách dịch vụ">
+          {services.map((service) => (
+            <label
+              className={`service-option ${selectedServiceId === service.id ? 'selected' : ''}`}
+              key={service.id}
+            >
+              <input
+                type="radio"
+                name="service"
+                value={service.id}
+                checked={selectedServiceId === service.id}
+                disabled={busy || ticket !== null}
+                onChange={() => setSelectedServiceId(service.id)}
+              />
+              <span className="service-code">{service.code}</span>
+              <span>{service.name}</span>
+            </label>
           ))}
-        </select>
+        </div>
 
         <button
           type="button"
-          disabled={
-            flow.phase !== 'ready' ||
-            flow.selectedServiceId.length === 0 ||
-            flow.busyAction !== null ||
-            flow.booking !== null
-          }
-          onClick={() => void flow.createBooking()}
+          className="primary-button"
+          disabled={busy || selectedServiceId === '' || ticket !== null}
+          onClick={() => void handleCreateTicket()}
         >
-          {flow.busyAction === 'create' ? 'Đang tạo lượt...' : 'Lấy số thứ tự'}
+          {loadingAction === 'create' ? 'Đang lấy số...' : 'Lấy số thứ tự'}
         </button>
+        {selectedServiceId === '' && ticket === null ? (
+          <p className="hint">Vui lòng chọn dịch vụ trước khi lấy số.</p>
+        ) : null}
       </section>
 
-      {flow.phase === 'initializing' ? (
-        <section className="empty-card" role="status">
-          <div className="loading-dot" aria-hidden="true" />
-          <div>
-            <h2>Đang kết nối Mock Central</h2>
-            <p>Ứng dụng đang xác thực và tải danh sách địa điểm.</p>
-          </div>
+      {ticket === null ? (
+        <section className="ticket-card empty" aria-labelledby="ticket-empty-title">
+          <h2 id="ticket-empty-title">Chưa có lượt đang chờ</h2>
+          <p>Số thứ tự sẽ hiển thị tại đây sau khi bạn chọn dịch vụ và bấm lấy số.</p>
         </section>
-      ) : null}
-
-      {flow.phase === 'ready' && flow.booking === null ? (
-        <section className="empty-card" aria-labelledby="current-ticket-title">
-          <div className="empty-icon" aria-hidden="true">
-            0
-          </div>
-          <div>
-            <h2 id="current-ticket-title">Chưa có lượt đang chờ</h2>
-            <p>Chọn địa điểm và dịch vụ để tạo lượt thử nghiệm.</p>
-          </div>
-        </section>
-      ) : null}
-
-      {flow.booking !== null ? (
-        <section className="booking-card" aria-labelledby="booking-title">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Lượt hiện tại</p>
-              <h2 id="booking-title">{flow.booking.bookingReference}</h2>
-            </div>
-            <span className={`status-chip status-${flow.booking.status.toLowerCase()}`}>
-              {STATUS_LABELS[flow.booking.status]}
-            </span>
-          </div>
+      ) : (
+        <section className="ticket-card" aria-labelledby="ticket-title">
+          <p className="eyebrow">Số thứ tự của bạn</p>
+          <h2 id="ticket-title">{ticket.ticketNumber}</h2>
           <dl>
             <div>
-              <dt>Địa điểm</dt>
-              <dd>{selectedLocation?.displayName ?? flow.booking.locationId}</dd>
-            </div>
-            <div>
               <dt>Dịch vụ</dt>
-              <dd>{selectedService?.displayName ?? flow.booking.serviceId}</dd>
-            </div>
-            <div>
-              <dt>Thời gian</dt>
-              <dd>{formatDateTime(flow.booking.requestedStartAt)}</dd>
+              <dd>{selectedService?.name ?? ticket.serviceName}</dd>
             </div>
             <div>
               <dt>Trạng thái</dt>
-              <dd>{STATUS_LABELS[flow.booking.status]}</dd>
+              <dd>{statusLabel(ticket.status)}</dd>
+            </div>
+            <div>
+              <dt>Số người chờ phía trước</dt>
+              <dd>{ticket.waitingAhead}</dd>
             </div>
           </dl>
-          <div className="booking-actions">
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={flow.busyAction !== null || flow.isTerminal}
-              onClick={() => void flow.createQr()}
-            >
-              {flow.busyAction === 'qr' ? 'Đang tạo QR...' : 'Tạo mã QR check-in'}
+          <div className="action-row">
+            <button type="button" onClick={() => void handleRefreshStatus()} disabled={busy}>
+              {loadingAction === 'status' ? 'Đang cập nhật...' : 'Cập nhật trạng thái'}
             </button>
-            <button
-              type="button"
-              className="danger-button"
-              disabled={flow.busyAction !== null || !flow.booking.canCancel || flow.isTerminal}
-              onClick={() => void flow.cancelBooking()}
-            >
-              {flow.busyAction === 'cancel' ? 'Đang hủy...' : 'Hủy lượt'}
+            <button type="button" className="secondary-button" onClick={resetCurrentTicket} disabled={busy}>
+              Lấy số khác
             </button>
           </div>
         </section>
-      ) : null}
+      )}
 
-      {flow.checkInToken !== null ? (
-        <section className="qr-card" aria-labelledby="qr-title">
-          <p className="eyebrow">Check-in tại điểm phục vụ</p>
-          <h2 id="qr-title">Mã QR của lượt</h2>
-          <div className="qr-frame" aria-label="Mã QR check-in">
-            <QRCodeSVG value={flow.checkInToken.checkInToken} size={184} level="M" />
-          </div>
-          <p>Đưa mã này cho thiết bị check-in. Không chia sẻ ảnh mã QR.</p>
-          <small>Hết hạn: {formatDateTime(flow.checkInToken.expiresAt)}</small>
-        </section>
-      ) : null}
-
-      <footer>Chế độ thử nghiệm không yêu cầu thông tin cá nhân hoặc quyền truy cập Zalo.</footer>
+      <footer>
+        Giai đoạn này chỉ dùng mock API và không thu thập thông tin cá nhân nhạy cảm.
+      </footer>
     </main>
   );
 }

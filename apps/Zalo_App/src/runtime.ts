@@ -17,8 +17,15 @@ export type SystemInfoReader = () => unknown | Promise<unknown>;
 const DEFAULT_SYSTEM_INFO_TIMEOUT_MS = 1_500;
 
 async function readZaloSystemInfo(): Promise<unknown> {
-  const { getSystemInfo } = await import('zmp-sdk/apis');
-  return getSystemInfo();
+  const moduleName = 'zmp-sdk/apis';
+  const sdkModule = (await import(/* @vite-ignore */ moduleName)) as unknown;
+  if (
+    !isRecord(sdkModule) ||
+    typeof sdkModule.getSystemInfo !== 'function'
+  ) {
+    throw new Error('Zalo SDK getSystemInfo is unavailable.');
+  }
+  return sdkModule.getSystemInfo();
 }
 
 export function isBrowserDevelopmentEnabled(

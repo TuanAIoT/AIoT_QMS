@@ -200,9 +200,6 @@ importers:
 
   apps/Zalo_App:
     dependencies:
-      qrcode.react:
-        specifier: 4.2.0
-        version: 4.2.0(react@18.3.1)
       react:
         specifier: 18.3.1
         version: 18.3.1
@@ -264,6 +261,21 @@ importers:
       '@qms/seed-data':
         specifier: workspace:*
         version: link:../seed-data
+    devDependencies:
+      '@types/node':
+        specifier: 22.13.10
+        version: 22.13.10
+      tsx:
+        specifier: 4.19.3
+        version: 4.19.3
+      typescript:
+        specifier: 5.8.2
+        version: 5.8.2
+      vitest:
+        specifier: 3.0.8
+        version: 3.0.8(@types/node@22.13.10)(jsdom@26.0.0)(terser@5.48.0)(tsx@4.19.3)
+
+  mocks/mock-zalo-qms-server:
     devDependencies:
       '@types/node':
         specifier: 22.13.10
@@ -4406,11 +4418,6 @@ packages:
   qrcode-terminal@0.12.0:
     resolution: {integrity: sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==}
     hasBin: true
-
-  qrcode.react@4.2.0:
-    resolution: {integrity: sha512-QpgqWi8rD9DsS9EP3z7BT+5lY5SFhsqGjpgW5DY/i3mK4M9DTBNz3ErMi8BWYEfI3L0d8GIbGmcdFAS1uIRGjA==}
-    peerDependencies:
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   qrcode@1.5.4:
     resolution: {integrity: sha512-1ca71Zgiu6ORjHqFBDpnSMTR2ReToX4l1Au1VFLyVeBTFavzQnv5JxMFr3ukHVKpSrSA2MCk0lNJSykjUfz7Zg==}
@@ -10210,10 +10217,6 @@ snapshots:
   q@1.5.1: {}
 
   qrcode-terminal@0.12.0: {}
-
-  qrcode.react@4.2.0(react@18.3.1):
-    dependencies:
-      react: 18.3.1
 
   qrcode@1.5.4:
     dependencies:

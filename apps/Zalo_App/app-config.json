@@ -1,8 +1,8 @@
 {
   "app": {
-    "title": "Xếp hàng dịch vụ công",
+    "title": "Tuan QMS",
     "headerColor": "#0068ff",
-    "headerTitle": "Xếp hàng dịch vụ công",
+    "headerTitle": "Tuan QMS",
     "textColor": "white",
     "leftButton": "back",
     "statusBar": "normal",

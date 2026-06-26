@@ -16,6 +16,7 @@
     "dev:web-central-admin": "pnpm --filter @qms/web-central-admin dev",
     "dev:web-teller": "pnpm --filter @qms/web-teller dev",
     "dev:zalo-app": "pnpm --filter @qms/zalo-app dev",
+    "dev:mock-zalo-qms": "pnpm --filter @qms/mock-zalo-qms-server dev",
     "dev:linux-audio-service": "pnpm --filter @qms/linux-audio-service dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

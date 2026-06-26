@@ -51,6 +51,7 @@ pnpm dev:web-admin-local
 pnpm dev:web-central-admin
 pnpm dev:web-teller
 pnpm dev:zalo-app
+pnpm dev:mock-zalo-qms
 pnpm dev:linux-audio-service
 ```
 
@@ -61,6 +62,54 @@ pnpm --filter @qms/web-teller dev
 ```
 
 `Display_Service_Quality` chỉ là skeleton với trạng thái `OWNER_PENDING` và `NOT_IN_PHASE_1`.
+
+### Zalo App MVP với mock API
+
+`apps/Zalo_App` hiện có MVP Zalo Mini App để lấy số thứ tự qua mock API local. Đây chưa phải backend thật, chưa tích hợp OA message, webhook, access token, app secret hoặc dữ liệu công dân.
+
+Tạo file `apps/Zalo_App/.env.development` từ `.env.example` nếu cần cấu hình lại:
+
+```powershell
+Copy-Item apps\Zalo_App\.env.example apps\Zalo_App\.env.development
+```
+
+Giá trị development mặc định:
+
+```dotenv
+VITE_ZALO_BROWSER_DEVELOPMENT=true
+VITE_QMS_API_BASE_URL=http://127.0.0.1:3003
+```
+
+Chạy mock API:
+
+```powershell
+pnpm dev:mock-zalo-qms
+```
+
+Chạy Zalo App local ở terminal khác:
+
+```powershell
+pnpm dev:zalo-app
+```
+
+Các endpoint mock chính:
+
+- `GET /health`
+- `GET /api/zalo/services`
+- `POST /api/zalo/tickets`
+- `GET /api/zalo/tickets/:ticketId`
+- `POST /api/zalo/dev/reset`
+- `POST /api/zalo/dev/call-next`
+
+Build để deploy Development bằng Zalo CLI:
+
+```powershell
+pnpm --filter @qms/zalo-app build
+pnpm --filter @qms/zalo-app zmp:sync-config
+pnpm --filter @qms/zalo-app zmp:deploy
+```
+
+`APP_ID` và `VITE_ZALO_MINI_APP_ID` là định danh public của Mini App, không phải secret. Không commit token, app secret hoặc production endpoint.
 
 ## 5. Build toàn workspace
 
@@ -101,8 +150,8 @@ pnpm test
 - `infra/`: tài liệu giữ chỗ cho MQTT, systemd và nginx; chưa có cấu hình production.
 - `docs/`: kiến trúc và contract DRAFT.
 
-Workspace có 18 project: một root project, 7 App, 6 shared package và 4 mock package. Các lệnh root `build`, `typecheck` và `test` dùng `pnpm -r`, vì vậy pnpm báo `17 of 18 workspace projects`: 17 project con được thực thi, còn root chỉ điều phối lệnh. Root không có build/typecheck target riêng; cho root tham gia recursive command sẽ gọi lại chính lệnh điều phối.
+Workspace có 19 project: một root project, 7 App, 6 shared package và 5 mock package. Các lệnh root `build`, `typecheck` và `test` dùng `pnpm -r`, vì vậy pnpm báo `18 of 19 workspace projects`: 18 project con được thực thi, còn root chỉ điều phối lệnh. Root không có build/typecheck target riêng; cho root tham gia recursive command sẽ gọi lại chính lệnh điều phối.
 
 ## 10. Giới hạn giai đoạn hiện tại
 
-Workspace hiện chỉ có skeleton kỹ thuật. Chưa triển khai UI nghiệp vụ, authentication, API endpoint, MQTT topic/payload, MongoDB, queue algorithm, EWT, load balancing, sync engine, audio playback hoặc production infrastructure.
+Workspace hiện vẫn ở giai đoạn development/mock. Chưa triển khai backend thật, authentication production, MQTT production, MongoDB, queue algorithm, EWT, load balancing, sync engine, audio playback hoặc production infrastructure.
