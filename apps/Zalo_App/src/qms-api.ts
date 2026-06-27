@@ -1,32 +1,38 @@
-export interface QmsLocation {
+export interface QmsLocationDto {
   readonly locationId: string;
   readonly locationName: string;
   readonly address: string;
 }
 
-export interface QmsService {
+export interface QmsAreaDto {
+  readonly areaId: string;
+  readonly areaName: string;
+  readonly locationId: string;
+}
+
+export interface QmsServiceDto {
   readonly serviceId: string;
   readonly serviceName: string;
   readonly serviceCode: string;
+  readonly areaId: string;
+  readonly locationId: string;
   readonly description: string | null;
   readonly bookingEnabled: boolean;
 }
 
-export type QmsTicketStatus =
-  | 'WAITING'
-  | 'CALLED'
-  | 'SERVING'
-  | 'COMPLETED'
-  | 'CANCELLED'
-  | 'EXPIRED';
+export type QmsTicketStatus = 'WAITING' | 'CALLED' | 'SERVING' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED';
 
-export interface QmsTicket {
+export interface QmsTicketDto {
   readonly ticketId: string;
   readonly ticketNumber: string;
   readonly locationId: string;
   readonly locationName: string;
+  readonly areaId: string;
+  readonly areaName: string;
   readonly serviceId: string;
   readonly serviceName: string;
+  readonly fullName: string;
+  readonly bookingDate: string;
   readonly status: QmsTicketStatus;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -35,7 +41,7 @@ export interface QmsTicket {
   readonly canCancel: boolean;
 }
 
-export interface QmsCounter {
+export interface QmsCounterDto {
   readonly counterId: string;
   readonly counterName: string;
   readonly status: 'OPEN' | 'CLOSED';
@@ -44,38 +50,52 @@ export interface QmsCounter {
   readonly updatedAt: string;
 }
 
-export interface QmsQueueStatus {
+export interface QmsQueueStatusDto {
   readonly locationId: string;
   readonly locationName: string;
   readonly bookingEnabled: boolean;
   readonly currentDate: string;
-  readonly counters: readonly QmsCounter[];
-  readonly waitingTickets: readonly QmsTicket[];
+  readonly counters: readonly QmsCounterDto[];
+  readonly waitingTickets: readonly QmsTicketDto[];
 }
 
-export interface QmsCreateTicketRequest {
+export type QmsLocation = QmsLocationDto;
+export type QmsArea = QmsAreaDto;
+export type QmsService = QmsServiceDto;
+export type QmsTicket = QmsTicketDto;
+export type QmsCounter = QmsCounterDto;
+export type QmsQueueStatus = QmsQueueStatusDto;
+
+export interface QmsBookingHistoryResponseDto {
+  readonly currentBooking: QmsTicketDto | null;
+  readonly history: readonly QmsTicketDto[];
+}
+
+export interface QmsCreateBookingRequest {
   readonly locationId: string;
+  readonly areaId: string;
   readonly serviceId: string;
-}
-
-export interface QmsListTicketsRequest {
-  readonly locationId?: string | undefined;
-  readonly status?: QmsTicketStatus | undefined;
+  readonly fullName: string;
+  readonly bookingDate: string;
 }
 
 export interface QmsBookingApiClient {
-  getLocations(signal?: AbortSignal): Promise<readonly QmsLocation[]>;
-  getLocation(locationId: string, signal?: AbortSignal): Promise<QmsLocation>;
-  getServices(locationId: string, signal?: AbortSignal): Promise<readonly QmsService[]>;
-  createTicket(request: QmsCreateTicketRequest, signal?: AbortSignal): Promise<QmsTicket>;
-  listTickets(request?: QmsListTicketsRequest, signal?: AbortSignal): Promise<readonly QmsTicket[]>;
-  getTicket(ticketId: string, signal?: AbortSignal): Promise<QmsTicket>;
-  cancelTicket(ticketId: string, signal?: AbortSignal): Promise<QmsTicket>;
-  getQueueStatus(locationId: string, signal?: AbortSignal): Promise<QmsQueueStatus>;
-  callNext(
-    locationId?: string,
+  getLocations(signal?: AbortSignal): Promise<readonly QmsLocationDto[]>;
+  getAreas(locationId: string, signal?: AbortSignal): Promise<readonly QmsAreaDto[]>;
+  getServices(locationId: string, areaIdOrSignal?: string | AbortSignal, signal?: AbortSignal): Promise<readonly QmsServiceDto[]>;
+  createBooking(request: QmsCreateBookingRequest, signal?: AbortSignal): Promise<QmsTicketDto>;
+  createTicket(
+    request: Pick<QmsCreateBookingRequest, 'locationId' | 'serviceId'> &
+      Partial<Pick<QmsCreateBookingRequest, 'areaId' | 'fullName' | 'bookingDate'>>,
     signal?: AbortSignal,
-  ): Promise<{ readonly ticket: QmsTicket | null }>;
+  ): Promise<QmsTicketDto>;
+  getCurrentBooking(locationId: string, signal?: AbortSignal): Promise<QmsTicketDto | null>;
+  listBookingHistory(locationId: string, signal?: AbortSignal): Promise<readonly QmsTicketDto[]>;
+  listTickets(request?: { readonly locationId?: string; readonly status?: QmsTicketStatus }, signal?: AbortSignal): Promise<readonly QmsTicketDto[]>;
+  getTicket(ticketId: string, signal?: AbortSignal): Promise<QmsTicketDto>;
+  cancelTicket(ticketId: string, signal?: AbortSignal): Promise<QmsTicketDto>;
+  getQueueStatus(locationId: string, signal?: AbortSignal): Promise<QmsQueueStatusDto>;
+  callNext(locationId?: string, signal?: AbortSignal): Promise<{ readonly ticket: QmsTicketDto | null }>;
   resetDevelopmentData(signal?: AbortSignal): Promise<{ readonly reset: true }>;
 }
 
@@ -125,15 +145,8 @@ function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
 }
 
-function isErrorEnvelope(value: unknown): value is {
-  readonly error: { readonly code: string; readonly message: string };
-} {
-  return (
-    isRecord(value) &&
-    isRecord(value.error) &&
-    hasText(value.error.code) &&
-    hasText(value.error.message)
-  );
+function isErrorEnvelope(value: unknown): value is { readonly error: { readonly code: string; readonly message: string } } {
+  return isRecord(value) && isRecord(value.error) && hasText(value.error.code) && hasText(value.error.message);
 }
 
 function isWrappedSuccess(value: unknown): value is { readonly data: unknown } {
@@ -150,28 +163,28 @@ function unwrapBody<T>(body: unknown, parseData: (value: unknown) => T): T {
   return parseData(body);
 }
 
-function parseLocation(value: unknown): QmsLocation {
-  if (
-    !isRecord(value) ||
-    !hasText(value.locationId) ||
-    !hasText(value.locationName) ||
-    !hasText(value.address)
-  ) {
+function parseLocation(value: unknown): QmsLocationDto {
+  if (!isRecord(value) || !hasText(value.locationId) || !hasText(value.locationName) || !hasText(value.address)) {
     throw new QmsApiError('INVALID_RESPONSE', 'Dữ liệu địa điểm không hợp lệ.');
   }
-  return {
-    locationId: value.locationId,
-    locationName: value.locationName,
-    address: value.address,
-  };
+  return { locationId: value.locationId, locationName: value.locationName, address: value.address };
 }
 
-function parseService(value: unknown): QmsService {
+function parseArea(value: unknown): QmsAreaDto {
+  if (!isRecord(value) || !hasText(value.areaId) || !hasText(value.areaName) || !hasText(value.locationId)) {
+    throw new QmsApiError('INVALID_RESPONSE', 'Dữ liệu lĩnh vực không hợp lệ.');
+  }
+  return { areaId: value.areaId, areaName: value.areaName, locationId: value.locationId };
+}
+
+function parseService(value: unknown): QmsServiceDto {
   if (
     !isRecord(value) ||
     !hasText(value.serviceId) ||
     !hasText(value.serviceName) ||
     !hasText(value.serviceCode) ||
+    !hasText(value.areaId) ||
+    !hasText(value.locationId) ||
     (value.description !== null && !hasText(value.description)) ||
     typeof value.bookingEnabled !== 'boolean'
   ) {
@@ -181,34 +194,33 @@ function parseService(value: unknown): QmsService {
     serviceId: value.serviceId,
     serviceName: value.serviceName,
     serviceCode: value.serviceCode,
+    areaId: value.areaId,
+    locationId: value.locationId,
     description: value.description ?? null,
     bookingEnabled: value.bookingEnabled,
   };
 }
 
 function parseTicketStatus(value: unknown): QmsTicketStatus {
-  if (
-    value === 'WAITING' ||
-    value === 'CALLED' ||
-    value === 'SERVING' ||
-    value === 'COMPLETED' ||
-    value === 'CANCELLED' ||
-    value === 'EXPIRED'
-  ) {
+  if (value === 'WAITING' || value === 'CALLED' || value === 'SERVING' || value === 'COMPLETED' || value === 'CANCELLED' || value === 'EXPIRED') {
     return value;
   }
-  throw new QmsApiError('INVALID_RESPONSE', 'Trạng thái số không hợp lệ.');
+  throw new QmsApiError('INVALID_RESPONSE', 'Trạng thái phiếu không hợp lệ.');
 }
 
-function parseTicket(value: unknown): QmsTicket {
+function parseTicket(value: unknown): QmsTicketDto {
   if (
     !isRecord(value) ||
     !hasText(value.ticketId) ||
     !hasText(value.ticketNumber) ||
     !hasText(value.locationId) ||
     !hasText(value.locationName) ||
+    !hasText(value.areaId) ||
+    !hasText(value.areaName) ||
     !hasText(value.serviceId) ||
     !hasText(value.serviceName) ||
+    !hasText(value.fullName) ||
+    !hasText(value.bookingDate) ||
     !hasText(value.createdAt) ||
     !hasText(value.updatedAt) ||
     !hasText(value.checkInExpiresAt) ||
@@ -222,8 +234,12 @@ function parseTicket(value: unknown): QmsTicket {
     ticketNumber: value.ticketNumber,
     locationId: value.locationId,
     locationName: value.locationName,
+    areaId: value.areaId,
+    areaName: value.areaName,
     serviceId: value.serviceId,
     serviceName: value.serviceName,
+    fullName: value.fullName,
+    bookingDate: value.bookingDate,
     status: parseTicketStatus(value.status),
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
@@ -233,7 +249,7 @@ function parseTicket(value: unknown): QmsTicket {
   };
 }
 
-function parseCounter(value: unknown): QmsCounter {
+function parseCounter(value: unknown): QmsCounterDto {
   if (
     !isRecord(value) ||
     !hasText(value.counterId) ||
@@ -255,7 +271,7 @@ function parseCounter(value: unknown): QmsCounter {
   };
 }
 
-function parseQueueStatus(value: unknown): QmsQueueStatus {
+function parseQueueStatus(value: unknown): QmsQueueStatusDto {
   if (
     !isRecord(value) ||
     !hasText(value.locationId) ||
@@ -277,25 +293,32 @@ function parseQueueStatus(value: unknown): QmsQueueStatus {
   };
 }
 
-function parseTickets(value: unknown): readonly QmsTicket[] {
-  if (!Array.isArray(value)) {
-    throw new QmsApiError('INVALID_RESPONSE', 'Danh sách booking không hợp lệ.');
-  }
-  return value.map((item) => parseTicket(item));
-}
-
-function parseLocations(value: unknown): readonly QmsLocation[] {
+function parseLocations(value: unknown): readonly QmsLocationDto[] {
   if (!Array.isArray(value)) {
     throw new QmsApiError('INVALID_RESPONSE', 'Danh sách địa điểm không hợp lệ.');
   }
   return value.map((item) => parseLocation(item));
 }
 
-function parseServices(value: unknown): readonly QmsService[] {
+function parseAreas(value: unknown): readonly QmsAreaDto[] {
+  if (!Array.isArray(value)) {
+    throw new QmsApiError('INVALID_RESPONSE', 'Danh sách lĩnh vực không hợp lệ.');
+  }
+  return value.map((item) => parseArea(item));
+}
+
+function parseServices(value: unknown): readonly QmsServiceDto[] {
   if (!Array.isArray(value)) {
     throw new QmsApiError('INVALID_RESPONSE', 'Danh sách dịch vụ không hợp lệ.');
   }
   return value.map((item) => parseService(item));
+}
+
+function parseTickets(value: unknown): readonly QmsTicketDto[] {
+  if (!Array.isArray(value)) {
+    throw new QmsApiError('INVALID_RESPONSE', 'Danh sách booking không hợp lệ.');
+  }
+  return value.map((item) => parseTicket(item));
 }
 
 function parseResponseObject(value: unknown): Record<string, unknown> {
@@ -319,73 +342,109 @@ export class HttpQmsApiClient implements QmsBookingApiClient {
     }
   }
 
-  getLocations(signal?: AbortSignal): Promise<readonly QmsLocation[]> {
-    return this.request('api/zalo/locations', parseLocations, {
-      ...(signal === undefined ? {} : { signal }),
-    });
+  getLocations(signal?: AbortSignal): Promise<readonly QmsLocationDto[]> {
+    return this.request('api/zalo/locations', parseLocations, { signal });
   }
 
-  getLocation(locationId: string, signal?: AbortSignal): Promise<QmsLocation> {
-    return this.request(`api/zalo/locations/${encodeURIComponent(locationId)}`, parseLocation, {
-      ...(signal === undefined ? {} : { signal }),
-    });
+  getAreas(locationId: string, signal?: AbortSignal): Promise<readonly QmsAreaDto[]> {
+    return this.request(`api/zalo/locations/${encodeURIComponent(locationId)}/areas`, parseAreas, { signal });
   }
 
-  getServices(locationId: string, signal?: AbortSignal): Promise<readonly QmsService[]> {
-    return this.request(`api/zalo/locations/${encodeURIComponent(locationId)}/services`, parseServices, {
-      ...(signal === undefined ? {} : { signal }),
-    });
-  }
-
-  createTicket(request: QmsCreateTicketRequest, signal?: AbortSignal): Promise<QmsTicket> {
-    return this.request('api/zalo/tickets', parseTicket, {
-      method: 'POST',
-      body: request,
-      ...(signal === undefined ? {} : { signal }),
-    });
-  }
-
-  listTickets(
-    request: QmsListTicketsRequest = {},
+  getServices(
+    locationId: string,
+    areaIdOrSignal?: string | AbortSignal,
     signal?: AbortSignal,
-  ): Promise<readonly QmsTicket[]> {
-    const query = {
-      ...(request.locationId === undefined ? {} : { locationId: request.locationId }),
-      ...(request.status === undefined ? {} : { status: request.status }),
-    } satisfies Record<string, string | undefined>;
-    return this.request('api/zalo/tickets', parseTickets, {
-      ...(signal === undefined ? {} : { signal }),
-      query,
-    });
-  }
-
-  getTicket(ticketId: string, signal?: AbortSignal): Promise<QmsTicket> {
-    return this.request(`api/zalo/tickets/${encodeURIComponent(ticketId)}`, parseTicket, {
-      ...(signal === undefined ? {} : { signal }),
-    });
-  }
-
-  cancelTicket(ticketId: string, signal?: AbortSignal): Promise<QmsTicket> {
-    return this.request(`api/zalo/tickets/${encodeURIComponent(ticketId)}/cancel`, parseTicket, {
-      method: 'POST',
-      ...(signal === undefined ? {} : { signal }),
-    });
-  }
-
-  getQueueStatus(locationId: string, signal?: AbortSignal): Promise<QmsQueueStatus> {
+  ): Promise<readonly QmsServiceDto[]> {
+    const areaId = typeof areaIdOrSignal === 'string' ? areaIdOrSignal : undefined;
+    const requestSignal = typeof areaIdOrSignal === 'string' ? signal : areaIdOrSignal;
     return this.request(
-      `api/zalo/locations/${encodeURIComponent(locationId)}/queue-status`,
-      parseQueueStatus,
+      `api/zalo/locations/${encodeURIComponent(locationId)}/services`,
+      parseServices,
       {
-        ...(signal === undefined ? {} : { signal }),
+        ...(requestSignal === undefined ? {} : { signal: requestSignal }),
+        ...(areaId === undefined ? {} : { query: { areaId } }),
       },
     );
   }
 
-  callNext(
-    locationId?: string,
+  createTicket(
+    request: Pick<QmsCreateBookingRequest, 'locationId' | 'serviceId'> &
+      Partial<Pick<QmsCreateBookingRequest, 'areaId' | 'fullName' | 'bookingDate'>>,
     signal?: AbortSignal,
-  ): Promise<{ readonly ticket: QmsTicket | null }> {
+  ): Promise<QmsTicketDto> {
+    return this.createBooking(
+      {
+        locationId: request.locationId,
+        areaId: request.areaId ?? '',
+        serviceId: request.serviceId,
+        fullName: request.fullName ?? '',
+        bookingDate: request.bookingDate ?? '',
+      },
+      signal,
+    );
+  }
+
+  createBooking(request: QmsCreateBookingRequest, signal?: AbortSignal): Promise<QmsTicketDto> {
+    return this.request('api/zalo/bookings', parseTicket, { method: 'POST', body: request, signal });
+  }
+
+  getCurrentBooking(locationId: string, signal?: AbortSignal): Promise<QmsTicketDto | null> {
+    return this.request(
+      `api/zalo/locations/${encodeURIComponent(locationId)}/bookings/current`,
+      (value) => {
+        if (value === null) {
+          return null;
+        }
+        return parseTicket(value);
+      },
+      { signal },
+    );
+  }
+
+  listBookingHistory(locationId: string, signal?: AbortSignal): Promise<readonly QmsTicketDto[]> {
+    return this.request(`api/zalo/locations/${encodeURIComponent(locationId)}/bookings/history`, parseTickets, {
+      signal,
+    });
+  }
+
+  listTickets(
+    request: { readonly locationId?: string; readonly status?: QmsTicketStatus } = {},
+    signal?: AbortSignal,
+  ): Promise<readonly QmsTicketDto[]> {
+    if (request.locationId === undefined) {
+      return this.request('api/zalo/bookings', parseTickets, {
+        ...(signal === undefined ? {} : { signal }),
+        ...(request.status === undefined ? {} : { query: { status: request.status } }),
+      });
+    }
+    return this.request(
+      `api/zalo/locations/${encodeURIComponent(request.locationId)}/bookings/history`,
+      parseTickets,
+      {
+        ...(signal === undefined ? {} : { signal }),
+        ...(request.status === undefined ? {} : { query: { status: request.status } }),
+      },
+    );
+  }
+
+  getTicket(ticketId: string, signal?: AbortSignal): Promise<QmsTicketDto> {
+    return this.request(`api/zalo/bookings/${encodeURIComponent(ticketId)}`, parseTicket, { signal });
+  }
+
+  cancelTicket(ticketId: string, signal?: AbortSignal): Promise<QmsTicketDto> {
+    return this.request(`api/zalo/bookings/${encodeURIComponent(ticketId)}/cancel`, parseTicket, {
+      method: 'POST',
+      signal,
+    });
+  }
+
+  getQueueStatus(locationId: string, signal?: AbortSignal): Promise<QmsQueueStatusDto> {
+    return this.request(`api/zalo/locations/${encodeURIComponent(locationId)}/queue-status`, parseQueueStatus, {
+      signal,
+    });
+  }
+
+  callNext(locationId?: string, signal?: AbortSignal): Promise<{ readonly ticket: QmsTicketDto | null }> {
     return this.request(
       'api/zalo/dev/call-next',
       (value) => {
@@ -395,11 +454,7 @@ export class HttpQmsApiClient implements QmsBookingApiClient {
         }
         return { ticket: body.ticket === null ? null : parseTicket(body.ticket) };
       },
-      {
-        method: 'POST',
-        ...(signal === undefined ? {} : { signal }),
-        ...(locationId === undefined ? {} : { body: { locationId } }),
-      },
+      { method: 'POST', signal, ...(locationId === undefined ? {} : { body: { locationId } }) },
     );
   }
 
@@ -413,20 +468,13 @@ export class HttpQmsApiClient implements QmsBookingApiClient {
         }
         return { reset: true as const };
       },
-      {
-        method: 'POST',
-        ...(signal === undefined ? {} : { signal }),
-      },
+      { method: 'POST', signal },
     );
   }
 
-  private async request<T>(
-    path: string,
-    parseData: (value: unknown) => T,
-    options: RequestOptions = {},
-  ): Promise<T> {
+  private async request<T>(path: string, parseData: (value: unknown) => T, options: RequestOptions = {}): Promise<T> {
     if (isAbortSignalAborted(options.signal)) {
-      throw new QmsApiError('REQUEST_ABORTED', 'Yêu cầu đã được hủy.');
+      throw new QmsApiError('REQUEST_ABORTED', 'Yêu cầu đã bị hủy.');
     }
 
     const controller = new AbortController();
@@ -464,11 +512,7 @@ export class HttpQmsApiClient implements QmsBookingApiClient {
         if (isErrorEnvelope(parsed)) {
           throw new QmsApiError('HTTP_ERROR', parsed.error.message, response.status, parsed.error.code);
         }
-        throw new QmsApiError(
-          'HTTP_ERROR',
-          `Máy chủ thử nghiệm trả về lỗi (${String(response.status)}).`,
-          response.status,
-        );
+        throw new QmsApiError('HTTP_ERROR', `Máy chủ thử nghiệm trả về lỗi (${String(response.status)}).`, response.status);
       }
       return unwrapBody(parsed, parseData);
     } catch (error) {
@@ -476,7 +520,7 @@ export class HttpQmsApiClient implements QmsBookingApiClient {
         throw error;
       }
       if (timedOut || isAbortSignalAborted(options.signal) || controller.signal.aborted) {
-        throw new QmsApiError('REQUEST_ABORTED', 'Yêu cầu đã được hủy.');
+        throw new QmsApiError('REQUEST_ABORTED', 'Yêu cầu đã bị hủy.');
       }
       throw new QmsApiError('NETWORK_ERROR', 'Không kết nối được máy chủ thử nghiệm.');
     } finally {

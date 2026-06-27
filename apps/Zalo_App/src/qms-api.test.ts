@@ -71,4 +71,39 @@ describe('qms-api', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('parses the wrapped areas and filtered services response shapes', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          ok: true,
+          data: [{ areaId: 'area-justice', areaName: 'Tư pháp, hộ tịch', locationId: 'loc-cumta' }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          ok: true,
+          data: [{
+            serviceId: 'svc-justice-1',
+            serviceName: 'Khai sinh, khai tử',
+            serviceCode: 'A01',
+            areaId: 'area-justice',
+            locationId: 'loc-cumta',
+            description: 'Tiếp nhận hộ tịch',
+            bookingEnabled: true,
+          }],
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const api = createQmsApiClient('http://127.0.0.1:3003');
+
+    await expect(api.getAreas('loc-cumta')).resolves.toEqual([
+      { areaId: 'area-justice', areaName: 'Tư pháp, hộ tịch', locationId: 'loc-cumta' },
+    ]);
+    await expect(api.getServices('loc-cumta', 'area-justice')).resolves.toMatchObject([
+      { serviceId: 'svc-justice-1', areaId: 'area-justice', locationId: 'loc-cumta' },
+    ]);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('areaId=area-justice');
+  });
 });

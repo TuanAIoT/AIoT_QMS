@@ -1,97 +1,60 @@
 import QRCode from 'qrcode';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   createQmsApiClient,
   QmsApiError,
+  type QmsAreaDto,
   type QmsBookingApiClient,
-  type QmsCounter,
-  type QmsLocation,
-  type QmsQueueStatus,
-  type QmsService,
-  type QmsTicket,
-  type QmsTicketStatus,
+  type QmsLocationDto,
+  type QmsQueueStatusDto,
+  type QmsServiceDto,
+  type QmsTicketDto,
 } from './qms-api';
 import { getRuntimeConfig, initializeZaloRuntime, type ZaloRuntimeState } from './runtime';
 import './styles.css';
 
-export const APP_NAME = 'Tuan QMS';
-export const APP_SUBTITLE = 'Ứng dụng đặt số online';
-export const DEMO_UNIT_NAME = 'AIoT Making Innovation';
-export const DEMO_ORGANIZATION_NAME = 'Công ty TNHH Công nghệ AIoT';
+export const APP_NAME = 'AIoT JSC QMS';
+export const APP_SUBTITLE = 'Ứng dụng đặt số và tra cứu hàng chờ';
+export const ORGANIZATION_NAME = 'Công ty Cổ phần hệ thống AIoT';
+export const ORGANIZATION_WEBSITE = 'https://aiots.vn';
+export const ORGANIZATION_EMAIL = 'aiot@aiots.vn';
+export const ORGANIZATION_HOTLINES = ['097 186 8316', '0839 799 889'] as const;
+export const ORGANIZATION_ADDRESS = 'VPGD: Số A21-TT9 Đường Foresa 1 KĐT Xuân Phương, Phường Xuân Phương, Hà Nội.';
 
-type Screen =
-  | 'home'
-  | 'booking-location'
-  | 'booking-service'
-  | 'booking-detail'
-  | 'booked-list'
-  | 'queue-location'
-  | 'queue-status'
-  | 'public-service'
-  | 'case-lookup';
-
-type LoadingAction =
-  | 'bootstrap'
-  | 'locations'
-  | 'services'
-  | 'bookings'
-  | 'queue'
-  | 'create'
-  | 'cancel'
-  | 'detail'
-  | null;
-
-type RetryTarget = Exclude<LoadingAction, null>;
+type Screen = 'home' | 'locations' | 'booking' | 'current-booking' | 'history' | 'queue';
+type LoadingTarget = 'bootstrap' | 'locations' | 'areas' | 'services' | 'booking' | 'queue' | 'history' | 'booking-detail' | null;
+type RetryTarget = Exclude<LoadingTarget, null>;
 
 interface UiError {
-  readonly code:
-    | 'CONFIGURATION_ERROR'
-    | 'REQUEST_ABORTED'
-    | 'AUTH_FAILED'
-    | 'SCHEMA_ERROR'
-    | 'NETWORK_ERROR';
+  readonly code: 'CONFIGURATION_ERROR' | 'REQUEST_ABORTED' | 'AUTH_FAILED' | 'SCHEMA_ERROR' | 'NETWORK_ERROR';
   readonly message: string;
   readonly retryTarget: RetryTarget;
 }
 
-interface CaseLookupResult {
-  readonly caseCode: string;
-  readonly status: 'Đang xử lý';
-  readonly receivedAt: string;
-  readonly note: 'Dữ liệu mô phỏng';
+interface LocationModel {
+  readonly id: string;
+  readonly name: string;
+  readonly address: string;
+}
+
+interface AreaModel {
+  readonly id: string;
+  readonly name: string;
+}
+
+interface ServiceModel {
+  readonly id: string;
+  readonly name: string;
+  readonly code: string;
+  readonly areaId: string;
+  readonly description: string | null;
 }
 
 interface AppProps {
   readonly apiClient?: QmsBookingApiClient;
   readonly initializeRuntime?: () => Promise<ZaloRuntimeState>;
 }
-
-interface HomeMenuItem {
-  readonly title: string;
-  readonly subtitle: string;
-  readonly screen: Screen;
-}
-
-const HOME_MENU_ITEMS: readonly HomeMenuItem[] = [
-  {
-    title: 'Đặt số trực tuyến',
-    subtitle: 'Chọn địa điểm và dịch vụ',
-    screen: 'booking-location',
-  },
-  { title: 'Số đã đặt', subtitle: 'Xem các lượt đã tạo', screen: 'booked-list' },
-  {
-    title: 'Tình hình số thứ tự',
-    subtitle: 'Theo dõi tình trạng phục vụ',
-    screen: 'queue-location',
-  },
-  {
-    title: 'Cổng dịch vụ công quốc gia',
-    subtitle: 'Chức năng sẽ tích hợp sau',
-    screen: 'public-service',
-  },
-  { title: 'Tra cứu hồ sơ', subtitle: 'Mã hồ sơ mô phỏng', screen: 'case-lookup' },
-];
 
 function hasText(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -100,123 +63,102 @@ function hasText(value: unknown): value is string {
 function formatDateTime(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? 'Chưa xác định'
-    : new Intl.DateTimeFormat('vi-VN', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      }).format(date);
+    ? 'Không xác định'
+    : new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
 }
 
-function formatDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? 'Chưa xác định'
-    : new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short' }).format(date);
+function toLocalDateValue(date: Date): string {
+  return [
+    String(date.getFullYear()),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
 }
 
-function statusLabel(status: QmsTicketStatus): string {
-  switch (status) {
-    case 'WAITING':
-      return 'Đang chờ';
-    case 'CALLED':
-      return 'Đã gọi';
-    case 'SERVING':
-      return 'Đang phục vụ';
-    case 'COMPLETED':
-      return 'Đã hoàn thành';
-    case 'CANCELLED':
-      return 'Đã hủy';
-    case 'EXPIRED':
-      return 'Đã hết hạn';
-  }
+function mapLocation(dto: QmsLocationDto): LocationModel {
+  return { id: dto.locationId, name: dto.locationName, address: dto.address };
 }
 
-function counterStatusLabel(counter: QmsCounter): string {
-  return counter.status === 'OPEN' ? 'Mở' : 'Đóng';
+function mapArea(dto: QmsAreaDto): AreaModel {
+  return { id: dto.areaId, name: dto.areaName };
+}
+
+function mapService(dto: QmsServiceDto): ServiceModel {
+  return { id: dto.serviceId, name: dto.serviceName, code: dto.serviceCode, areaId: dto.areaId, description: dto.description };
 }
 
 function mapApiError(error: unknown, retryTarget: RetryTarget): UiError {
   if (error instanceof QmsApiError) {
     if (error.kind === 'CONFIGURATION_ERROR') {
-      return {
-        code: 'CONFIGURATION_ERROR',
-        message: error.message,
-        retryTarget,
-      };
+      return { code: 'CONFIGURATION_ERROR', message: error.message, retryTarget };
     }
     if (error.kind === 'REQUEST_ABORTED') {
-      return {
-        code: 'REQUEST_ABORTED',
-        message: error.message,
-        retryTarget,
-      };
+      return { code: 'REQUEST_ABORTED', message: error.message, retryTarget };
     }
     if (error.kind === 'HTTP_ERROR' && error.status === 401) {
-      return {
-        code: 'AUTH_FAILED',
-        message: error.message,
-        retryTarget,
-      };
+      return { code: 'AUTH_FAILED', message: error.message, retryTarget };
     }
     if (error.kind === 'INVALID_RESPONSE') {
-      return {
-        code: 'SCHEMA_ERROR',
-        message: 'Dữ liệu từ máy chủ thử nghiệm không đúng định dạng.',
-        retryTarget,
-      };
+      return { code: 'SCHEMA_ERROR', message: 'Dữ liệu từ máy chủ thử nghiệm không đúng định dạng.', retryTarget };
     }
-    return {
-      code: 'NETWORK_ERROR',
-      message: error.message,
-      retryTarget,
-    };
+    return { code: 'NETWORK_ERROR', message: error.message, retryTarget };
   }
-  return {
-    code: 'NETWORK_ERROR',
-    message: 'Không kết nối được máy chủ thử nghiệm.',
-    retryTarget,
-  };
+  return { code: 'NETWORK_ERROR', message: 'Không kết nối được máy chủ thử nghiệm.', retryTarget };
 }
 
-function createCaseLookupResult(caseCode: string): CaseLookupResult {
-  return {
-    caseCode,
-    status: 'Đang xử lý',
-    receivedAt: new Date().toISOString(),
-    note: 'Dữ liệu mô phỏng',
-  };
-}
-
-function AppShell({ children }: { readonly children: React.ReactNode }) {
-  return <main className="app-shell">{children}</main>;
-}
-
-function RuntimeStrip({ runtimeState }: { readonly runtimeState: ZaloRuntimeState }) {
-  const label =
-    runtimeState.phase === 'initializing'
-      ? 'Đang khởi tạo Zalo Mini App...'
-      : runtimeState.phase === 'configuration-error'
-        ? 'Cấu hình Zalo Mini App chưa đầy đủ.'
-        : runtimeState.phase === 'unsupported'
-          ? 'Môi trường hiện tại chưa được hỗ trợ.'
-          : runtimeState.runtime === 'zalo-mini-app'
-            ? 'Đang chạy trong Zalo Mini App.'
-            : 'Chế độ phát triển trên trình duyệt.';
-
+function HomeBanner({ onGoBooking, onGoHistory, onGoQueue }: { readonly onGoBooking: () => void; readonly onGoHistory: () => void; readonly onGoQueue: () => void; }) {
   return (
-    <section className="runtime-strip" aria-label="Trạng thái runtime">
-      <span>{label}</span>
+    <section className="home-screen">
+      <header className="hero-banner">
+        <div>
+          <p className="hero-kicker">AIoT JSC QMS</p>
+          <h1>{APP_NAME}</h1>
+          <p className="hero-subtitle">{APP_SUBTITLE}</p>
+        </div>
+        <span className="brand-chip">Chế độ thử nghiệm</span>
+      </header>
+      <section className="menu-grid">
+        <button type="button" className="menu-card" onClick={onGoBooking}><span aria-hidden="true">📅</span><strong>Đặt số trực tuyến</strong><span>Chọn đơn vị và lĩnh vực</span></button>
+        <button type="button" className="menu-card" onClick={onGoHistory}><span aria-hidden="true">📘</span><strong>Số đã đặt</strong><span>Xem phiếu đang hoạt động</span></button>
+        <button type="button" className="menu-card" onClick={onGoQueue}><span aria-hidden="true">🌐</span><strong>Tình hình số thứ tự</strong><span>Theo dõi quầy và số chờ</span></button>
+      </section>
+      <section className="section-block">
+        <article className="contact-card">
+          <strong>{ORGANIZATION_NAME}</strong>
+          <p>
+            <a href={ORGANIZATION_WEBSITE} target="_blank" rel="noreferrer">Website: {ORGANIZATION_WEBSITE}</a>
+          </p>
+          <p>
+            <a href={`mailto:${ORGANIZATION_EMAIL}`}>Email: {ORGANIZATION_EMAIL}</a>
+          </p>
+          <p>
+            Hotline/Zalo:{' '}
+            {ORGANIZATION_HOTLINES.map((phone, index) => (
+              <span key={phone}>
+                {index > 0 ? ' | ' : ''}
+                <a href={`tel:${phone.replace(/\s+/g, '')}`}>{phone}</a>
+              </span>
+            ))}
+          </p>
+          <p>{ORGANIZATION_ADDRESS}</p>
+        </article>
+      </section>
     </section>
   );
 }
 
-function ErrorBanner({
-  error,
-  onRetry,
-}: {
-  readonly error: UiError;
-  readonly onRetry: () => void;
-}) {
+function SectionTitle({ title, subtitle }: { readonly title: string; readonly subtitle?: string }) {
+  return (
+    <div className="section-heading">
+      <div>
+        {subtitle === undefined ? null : <p className="section-kicker">{subtitle}</p>}
+        <h2>{title}</h2>
+      </div>
+    </div>
+  );
+}
+
+function ErrorBanner({ error, onRetry }: { readonly error: UiError; readonly onRetry: () => void }) {
   return (
     <section className="error-banner" role="alert">
       <strong>
@@ -227,209 +169,37 @@ function ErrorBanner({
             : error.code === 'AUTH_FAILED'
               ? 'Xác thực không thành công'
               : error.code === 'SCHEMA_ERROR'
-                ? 'Dữ liệu từ máy chủ thử nghiệm không hợp lệ'
-              : 'Không kết nối được máy chủ thử nghiệm'}
+                ? 'Dữ liệu từ máy chủ thử nghiệm không đúng định dạng'
+                : 'Không kết nối được máy chủ thử nghiệm'}
       </strong>
       <p>{error.message}</p>
-      <button type="button" onClick={onRetry}>
-        Thử lại
-      </button>
+      <button type="button" onClick={onRetry}>Thử lại</button>
     </section>
   );
 }
 
 function LoadingState({ label }: { readonly label: string }) {
-  return (
-    <section className="loading-card" role="status" aria-live="polite">
-      <div className="loading-spinner" aria-hidden="true" />
-      <p>{label}</p>
-    </section>
-  );
+  return <section className="loading-card" role="status" aria-live="polite"><p>{label}</p></section>;
 }
 
-function InfoCard({
-  title,
-  description,
-  actionLabel,
-  onAction,
-}: {
-  readonly title: string;
-  readonly description: string;
-  readonly actionLabel: string;
-  readonly onAction: () => void;
-}) {
-  return (
-    <article className="info-card">
-      <div>
-        <h3>{title}</h3>
-        <p>{description}</p>
-      </div>
-      <button type="button" className="secondary-button" onClick={onAction}>
-        {actionLabel}
-      </button>
-    </article>
-  );
-}
-
-function SectionHeading({
-  kicker,
-  title,
-}: {
-  readonly kicker: string;
-  readonly title: string;
-}) {
-  return (
-    <div className="section-heading">
-      <div>
-        <p className="section-kicker">{kicker}</p>
-        <h2>{title}</h2>
-      </div>
-    </div>
-  );
-}
-
-function ScreenHeader({
-  title,
-  heroTitle,
-  description,
-  onBack,
-}: {
-  readonly title: string;
-  readonly heroTitle: string;
-  readonly description: string;
-  readonly onBack: () => void;
-}) {
-  return (
-    <header className="screen-header">
-      <button type="button" className="back-button" onClick={onBack} aria-label="Quay lại">
-        ←
-      </button>
-      <div className="screen-header-copy">
-        <p className="screen-title">{title}</p>
-        <h1>{heroTitle}</h1>
-        <p>{description}</p>
-      </div>
-    </header>
-  );
-}
-
-function HomeScreen({
-  onNavigate,
-  onInterest,
-  notice,
-}: {
-  readonly onNavigate: (screen: Screen) => void;
-  readonly onInterest: () => void;
-  readonly notice: string | null;
-}) {
-  return (
-    <section className="home-screen">
-      <header className="hero-banner">
-        <div>
-          <p className="hero-kicker">Tuan QMS</p>
-          <h1>{APP_NAME}</h1>
-          <p className="hero-subtitle">{APP_SUBTITLE}</p>
-        </div>
-        <span className="brand-chip">{DEMO_UNIT_NAME}</span>
-      </header>
-
-      <section className="menu-grid" aria-label="Menu chức năng">
-        {HOME_MENU_ITEMS.map((item) => (
-          <button
-            key={item.title}
-            type="button"
-            className="menu-card"
-            onClick={() => onNavigate(item.screen)}
-          >
-            <span className="menu-card-icon" aria-hidden="true">
-              {item.screen === 'booking-location'
-                ? '📅'
-                : item.screen === 'booked-list'
-                  ? '📘'
-                  : item.screen === 'queue-location'
-                    ? '🌐'
-                    : item.screen === 'public-service'
-                      ? '🌐'
-                      : '🔎'}
-            </span>
-            <strong>{item.title}</strong>
-            <span>{item.subtitle}</span>
-          </button>
-        ))}
-      </section>
-
-      <section className="section-block">
-        <SectionHeading kicker="Danh bạ" title="OA chính thức của đơn vị" />
-        <InfoCard
-          title={DEMO_UNIT_NAME}
-          description="Chưa kết nối OA thật trong giai đoạn mock."
-          actionLabel="Quan Tâm"
-          onAction={onInterest}
-        />
-        {notice !== null ? <p className="notice-line">{notice}</p> : null}
-      </section>
-
-      <section className="section-block">
-        <SectionHeading kicker="Liên hệ" title="Thông tin đơn vị" />
-        <article className="contact-card">
-          <strong>{DEMO_ORGANIZATION_NAME}</strong>
-          <p>Ứng dụng đặt số online local-first cho dịch vụ công và chăm sóc công dân.</p>
-        </article>
-      </section>
-    </section>
-  );
-}
-
-function LocationSelectScreen({
-  title,
-  heroTitle,
-  description,
+function LocationPicker({
   locations,
-  loading,
-  error,
-  onBack,
-  onRetry,
   onSelect,
 }: {
-  readonly title: string;
-  readonly heroTitle: string;
-  readonly description: string;
-  readonly locations: readonly QmsLocation[];
-  readonly loading: boolean;
-  readonly error: UiError | null;
-  readonly onBack: () => void;
-  readonly onRetry: () => void;
-  readonly onSelect: (locationId: string) => void;
+  readonly locations: readonly LocationModel[];
+  readonly onSelect: (location: LocationModel) => void;
 }) {
   return (
-    <section className="flow-screen">
-      <ScreenHeader title={title} heroTitle={heroTitle} description={description} onBack={onBack} />
-      {error !== null ? <ErrorBanner error={error} onRetry={onRetry} /> : null}
-      {loading ? <LoadingState label="Đang tải danh sách địa điểm..." /> : null}
-      {!loading && locations.length === 0 ? (
-        <section className="empty-card">
-          <h2>Chưa có địa điểm</h2>
-          <p>Hệ thống thử nghiệm chưa trả về dữ liệu để hiển thị.</p>
-        </section>
-      ) : null}
+    <section className="section-block">
+      <SectionTitle title="Chọn đơn vị" />
       <div className="location-list">
         {locations.map((location) => (
-          <button
-            key={location.locationId}
-            type="button"
-            className="location-card"
-            onClick={() => onSelect(location.locationId)}
-          >
-            <span className="location-icon" aria-hidden="true">
-              🏛
-            </span>
+          <button key={location.id} type="button" className="location-card" onClick={() => onSelect(location)}>
             <span className="location-copy">
-              <strong>{location.locationName}</strong>
-              <span>{location.address ?? 'Chưa có địa chỉ'}</span>
+              <strong>{location.name}</strong>
+              <span>{location.address}</span>
             </span>
-            <span className="location-arrow" aria-hidden="true">
-              →
-            </span>
+            <span className="location-arrow" aria-hidden="true">→</span>
           </button>
         ))}
       </div>
@@ -437,114 +207,160 @@ function LocationSelectScreen({
   );
 }
 
-function ServiceSelectScreen({
-  title,
-  heroTitle,
-  description,
+function BookingScreen({
   location,
+  areas,
   services,
-  loading,
-  error,
+  selectedAreaId,
   selectedServiceId,
+  fullName,
+  bookingDate,
+  loadingArea,
+  loadingService,
+  submitting,
+  areaError,
+  serviceError,
   onBack,
-  onRetry,
-  onSelect,
+  onSelectArea,
+  onSelectService,
+  onFullNameChange,
+  onBookingDateChange,
   onSubmit,
+  onRetry,
 }: {
-  readonly title: string;
-  readonly heroTitle: string;
-  readonly description: string;
-  readonly location: QmsLocation | null;
-  readonly services: readonly QmsService[];
-  readonly loading: boolean;
-  readonly error: UiError | null;
+  readonly location: LocationModel;
+  readonly areas: readonly AreaModel[];
+  readonly services: readonly ServiceModel[];
+  readonly selectedAreaId: string;
   readonly selectedServiceId: string;
+  readonly fullName: string;
+  readonly bookingDate: string;
+  readonly loadingArea: boolean;
+  readonly loadingService: boolean;
+  readonly submitting: boolean;
+  readonly areaError: UiError | null;
+  readonly serviceError: UiError | null;
   readonly onBack: () => void;
-  readonly onRetry: () => void;
-  readonly onSelect: (serviceId: string) => void;
+  readonly onSelectArea: (areaId: string) => void;
+  readonly onSelectService: (serviceId: string) => void;
+  readonly onFullNameChange: (value: string) => void;
+  readonly onBookingDateChange: (value: string) => void;
   readonly onSubmit: () => void;
+  readonly onRetry: () => void;
 }) {
+  const today = new Date();
+  const dateChoices = Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + index - 1);
+    return date;
+  });
+
   return (
     <section className="flow-screen">
-      <ScreenHeader title={title} heroTitle={heroTitle} description={description} onBack={onBack} />
-      <div className="context-card">
-        <strong>{location?.locationName ?? 'Chưa chọn địa điểm'}</strong>
-        <span>{location?.address ?? 'Chưa có địa chỉ'}</span>
-      </div>
-      {error !== null ? <ErrorBanner error={error} onRetry={onRetry} /> : null}
-      {loading ? <LoadingState label="Đang tải danh sách dịch vụ..." /> : null}
-      {!loading && services.length === 0 ? (
-        <section className="empty-card">
-          <h2>Chưa có dịch vụ</h2>
-          <p>Địa điểm này chưa có dịch vụ nào được mock.</p>
-        </section>
-      ) : null}
-      <div className="service-list">
-        {services.map((service) => {
-          const selected = selectedServiceId === service.serviceId;
-          return (
-            <button
-              key={service.serviceId}
-              type="button"
-              className={`service-card ${selected ? 'selected' : ''}`}
-              onClick={() => onSelect(service.serviceId)}
-            >
-              <span className="service-code">{service.serviceCode}</span>
+      <header className="screen-header">
+        <button type="button" className="back-button" onClick={onBack} aria-label="Quay lại">←</button>
+        <div>
+          <p className="screen-title">Đặt số trực tuyến</p>
+          <h1>Chọn dịch vụ</h1>
+          <p>{location.name}</p>
+        </div>
+      </header>
+
+      <section className="context-card">
+        <strong>{location.name}</strong>
+        <span>{location.address}</span>
+      </section>
+
+      <section className="section-block">
+        <SectionTitle title="Bảng lịch ngày" />
+        <div className="date-strip">
+          {dateChoices.map((date, index) => {
+            const value = toLocalDateValue(date);
+            const isPast = index === 0;
+            const label = new Intl.DateTimeFormat('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(date);
+            return (
+              <button
+                key={value}
+                type="button"
+                className={`date-chip ${bookingDate === value ? 'selected' : ''}`}
+                disabled={isPast}
+                onClick={() => onBookingDateChange(value)}
+                aria-pressed={bookingDate === value}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="section-block">
+        <SectionTitle title="Lĩnh vực" />
+        {loadingArea ? <LoadingState label="Đang tải lĩnh vực..." /> : null}
+        {areaError === null ? null : <section className="inline-error" role="alert"><p>{areaError.message}</p><button type="button" onClick={onRetry}>Thử lại</button></section>}
+        {!loadingArea && areaError === null && areas.length === 0 ? <p className="empty-inline">Chưa có lĩnh vực khả dụng.</p> : null}
+        <div className="service-list">
+          {areas.map((area) => (
+            <button key={area.id} type="button" className={`service-card ${selectedAreaId === area.id ? 'selected' : ''}`} onClick={() => onSelectArea(area.id)}>
+              <span className="service-copy"><strong>{area.name}</strong></span>
+              <span>{selectedAreaId === area.id ? 'Đã chọn' : 'Chọn'}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="section-block">
+        <SectionTitle title="Dịch vụ" />
+        {loadingService ? <LoadingState label="Đang tải dịch vụ..." /> : null}
+        {serviceError === null ? null : <section className="inline-error" role="alert"><p>{serviceError.message}</p><button type="button" onClick={onRetry}>Thử lại</button></section>}
+        {!loadingService && serviceError === null && !hasText(selectedAreaId) ? <p className="empty-inline">Chọn lĩnh vực để tải dịch vụ.</p> : null}
+        {!loadingService && serviceError === null && hasText(selectedAreaId) && services.length === 0 ? <p className="empty-inline">Chưa có dịch vụ khả dụng.</p> : null}
+        <div className="service-list">
+          {services.map((service) => (
+            <button key={service.id} type="button" className={`service-card ${selectedServiceId === service.id ? 'selected' : ''}`} onClick={() => onSelectService(service.id)}>
+              <span className="service-code">{service.code}</span>
               <span className="service-copy">
-                <strong>{service.serviceName}</strong>
+                <strong>{service.name}</strong>
                 <span>{service.description ?? 'Dịch vụ mô phỏng'}</span>
               </span>
-              <span className="service-state">{selected ? 'Đã chọn' : 'Chọn'}</span>
             </button>
-          );
-        })}
-      </div>
-      <button
-        type="button"
-        className="primary-button"
-        onClick={onSubmit}
-        disabled={selectedServiceId.length === 0 || loading}
-      >
-        Lấy số thứ tự
+          ))}
+        </div>
+      </section>
+
+      <section className="section-block">
+        <SectionTitle title="Thông tin người đăng ký" />
+        <label htmlFor="full-name">Họ và tên</label>
+        <input id="full-name" value={fullName} onChange={(event) => onFullNameChange(event.target.value)} placeholder="Nhập họ và tên" />
+      </section>
+
+      <button type="button" className="primary-button" onClick={onSubmit} disabled={submitting || !hasText(fullName) || !hasText(bookingDate) || !hasText(selectedAreaId) || !hasText(selectedServiceId)}>
+        {submitting ? 'Đang đặt số...' : 'Xác nhận đặt số'}
       </button>
     </section>
   );
 }
 
-function BookingDetailScreen({
+export function BookingDetailScreen({
   booking,
-  onBackHome,
+  cancelling,
   onCancel,
-  onRefresh,
-  cancelLoading,
-  refreshLoading,
+  onHome,
 }: {
-  readonly booking: QmsTicket;
-  readonly onBackHome: () => void;
+  readonly booking: QmsTicketDto;
+  readonly cancelling: boolean;
   readonly onCancel: () => void;
-  readonly onRefresh: () => void;
-  readonly cancelLoading: boolean;
-  readonly refreshLoading: boolean;
+  readonly onHome: () => void;
 }) {
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void QRCode.toDataURL(booking.qrPayload, {
-      errorCorrectionLevel: 'M',
-      margin: 1,
-      width: 192,
-    })
-      .then((dataUrl) => {
-        if (active) {
-          setQrDataUrl(dataUrl);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setQrDataUrl(null);
-        }
-      });
+    void QRCode.toDataURL(booking.qrPayload, { width: 192, margin: 1 }).then((url) => {
+      if (active) {
+        setQrUrl(url);
+      }
+    });
     return () => {
       active = false;
     };
@@ -552,294 +368,119 @@ function BookingDetailScreen({
 
   return (
     <section className="flow-screen">
-      <ScreenHeader
-        title="Số đã đặt"
-        heroTitle="Số đã đặt"
-        description="Mã đặt lượt online đã được xác nhận"
-        onBack={onBackHome}
-      />
+      <header className="screen-header">
+        <button type="button" className="back-button" onClick={onHome} aria-label="Quay lại">←</button>
+        <div>
+          <p className="screen-title">Số đã đặt</p>
+          <h1>Phiếu đăng ký</h1>
+          <p>Thông tin chi tiết lượt đặt của bạn</p>
+        </div>
+      </header>
       <section className="status-pill confirmed">Đã xác nhận</section>
       <section className="qr-card">
-        <div className="qr-frame" aria-label="Mã QR của booking">
-          {qrDataUrl !== null ? <img src={qrDataUrl} alt="Mã QR của booking" /> : <span>Đang tạo QR...</span>}
-        </div>
-        <p>Mã QR chỉ chứa thông tin đặt lượt mô phỏng và không mang dữ liệu cá nhân.</p>
+        {qrUrl !== null ? <img src={qrUrl} alt="Mã QR của phiếu" /> : <span>Đang tạo QR...</span>}
       </section>
       <section className="ticket-detail-card">
         <h2>#{booking.ticketNumber}</h2>
         <dl>
-          <div>
-            <dt>Ngày</dt>
-            <dd>{formatDate(booking.createdAt)}</dd>
-          </div>
-          <div>
-            <dt>Thời gian hiệu lực</dt>
-            <dd>{formatDateTime(booking.createdAt)}</dd>
-          </div>
-          <div>
-            <dt>Thời hạn check-in</dt>
-            <dd>{formatDateTime(booking.checkInExpiresAt)}</dd>
-          </div>
-          <div>
-            <dt>Khách hàng</dt>
-            <dd>Khách hàng</dd>
-          </div>
-          <div>
-            <dt>Địa điểm</dt>
-            <dd>{booking.locationName}</dd>
-          </div>
-          <div>
-            <dt>Dịch vụ</dt>
-            <dd>{booking.serviceName}</dd>
-          </div>
-          <div>
-            <dt>Trạng thái</dt>
-            <dd>{statusLabel(booking.status)}</dd>
-          </div>
+          <div><dt>Mã phiếu</dt><dd>{booking.ticketId}</dd></div>
+          <div><dt>Đơn vị</dt><dd>{booking.locationName}</dd></div>
+          <div><dt>Lĩnh vực</dt><dd>{booking.areaName}</dd></div>
+          <div><dt>Dịch vụ</dt><dd>{booking.serviceName}</dd></div>
+          <div><dt>Họ và tên</dt><dd>{booking.fullName}</dd></div>
+          <div><dt>Ngày đăng ký</dt><dd>{booking.bookingDate}</dd></div>
+          <div><dt>Thời gian tạo</dt><dd>{formatDateTime(booking.createdAt)}</dd></div>
+          <div><dt>Trạng thái</dt><dd>{booking.status}</dd></div>
         </dl>
-        <div className="action-row">
-          <button
-            type="button"
-            className="danger-button"
-            onClick={onCancel}
-            disabled={cancelLoading || !booking.canCancel}
-          >
-            {cancelLoading ? 'Đang hủy...' : 'Hủy Booking'}
+        {booking.canCancel ? (
+          <button type="button" className="danger-button" disabled={cancelling} onClick={onCancel}>
+            {cancelling ? 'Đang hủy...' : 'Hủy lượt'}
           </button>
-          <button type="button" className="secondary-button" onClick={onRefresh} disabled={refreshLoading}>
-            {refreshLoading ? 'Đang làm mới...' : 'Làm mới'}
-          </button>
-        </div>
+        ) : null}
+        <button type="button" className="secondary-button" onClick={onHome}>Về trang chủ</button>
       </section>
     </section>
   );
 }
 
-function BookedTicketsScreen({
+function HistoryScreen({
+  currentBooking,
+  history,
   loading,
-  error,
-  bookings,
-  onBackHome,
-  onRetry,
-  onSelect,
+  onBack,
 }: {
+  readonly currentBooking: QmsTicketDto | null;
+  readonly history: readonly QmsTicketDto[];
   readonly loading: boolean;
-  readonly error: UiError | null;
-  readonly bookings: readonly QmsTicket[];
-  readonly onBackHome: () => void;
-  readonly onRetry: () => void;
-  readonly onSelect: (booking: QmsTicket) => void;
+  readonly onBack: () => void;
 }) {
   return (
     <section className="flow-screen">
-      <ScreenHeader
-        title="Số đã đặt"
-        heroTitle="Số đã đặt"
-        description="Danh sách các lượt đã tạo trong mock"
-        onBack={onBackHome}
-      />
-      {error !== null ? <ErrorBanner error={error} onRetry={onRetry} /> : null}
-      {loading ? <LoadingState label="Đang tải danh sách số đã đặt..." /> : null}
-      {!loading && bookings.length === 0 ? (
+      <header className="screen-header">
+        <button type="button" className="back-button" onClick={onBack} aria-label="Quay lại">←</button>
+        <div>
+          <p className="screen-title">Số đã đặt</p>
+          <h1>Lịch sử đặt số</h1>
+          <p>Phiếu đang hoạt động và các lượt trước đó</p>
+        </div>
+      </header>
+      {loading ? <LoadingState label="Đang tải dữ liệu..." /> : null}
+      {currentBooking === null ? (
         <section className="empty-card">
-          <h2>Bạn chưa có số đã đặt</h2>
-          <p>Hãy quay lại trang chủ để đặt số trực tuyến.</p>
+          <h2>Chưa có phiếu đang hoạt động</h2>
+          <p>Hãy tạo một lượt đặt mới để hiển thị phiếu hiện tại.</p>
         </section>
-      ) : null}
-      <div className="ticket-list">
-        {bookings.map((booking) => (
-          <button
-            key={booking.ticketId}
-            type="button"
-            className="ticket-list-card"
-            onClick={() => onSelect(booking)}
-          >
-            <div className="ticket-list-number">#{booking.ticketNumber}</div>
-            <div className="ticket-list-copy">
-              <strong>{booking.locationName}</strong>
-              <span>{booking.serviceName}</span>
-              <span>{statusLabel(booking.status)}</span>
-            </div>
-            <span className="ticket-list-time">{formatDateTime(booking.createdAt)}</span>
-          </button>
-        ))}
-      </div>
+      ) : (
+        <article className="ticket-card">
+          <strong>#{currentBooking.ticketNumber}</strong>
+          <span>{currentBooking.locationName}</span>
+          <span>{currentBooking.areaName}</span>
+          <span>{currentBooking.serviceName}</span>
+          <span>{currentBooking.fullName}</span>
+        </article>
+      )}
+      <section className="section-block">
+        <SectionTitle title="Lịch sử đặt số" subtitle="Các phiếu trước" />
+        {history.length === 0 ? <p>Chưa có lịch sử.</p> : history.map((ticket) => <article key={ticket.ticketId} className="ticket-card"><strong>#{ticket.ticketNumber}</strong><span>{ticket.serviceName}</span><span>{ticket.status}</span></article>)}
+      </section>
     </section>
   );
 }
 
-function QueueStatusScreen({
-  title,
-  heroTitle,
-  description,
-  location,
-  queueStatus,
-  loading,
-  error,
-  onBack,
-  onRetry,
-  onRefresh,
-}: {
-  readonly title: string;
-  readonly heroTitle: string;
-  readonly description: string;
-  readonly location: QmsLocation | null;
-  readonly queueStatus: QmsQueueStatus | null;
-  readonly loading: boolean;
-  readonly error: UiError | null;
-  readonly onBack: () => void;
-  readonly onRetry: () => void;
-  readonly onRefresh: () => void;
-}) {
+function QueueScreen({ location, queueStatus, loading, onBack, onRefresh }: { readonly location: LocationModel | null; readonly queueStatus: QmsQueueStatusDto | null; readonly loading: boolean; readonly onBack: () => void; readonly onRefresh: () => void; }) {
   return (
     <section className="flow-screen">
-      <ScreenHeader title={title} heroTitle={heroTitle} description={description} onBack={onBack} />
-      <div className="context-card">
-        <strong>{location?.locationName ?? 'Chưa chọn địa điểm'}</strong>
-        <span>{location?.address ?? 'Chưa có địa chỉ'}</span>
-      </div>
-      {error !== null ? <ErrorBanner error={error} onRetry={onRetry} /> : null}
-      {loading ? <LoadingState label="Đang tải tình hình số thứ tự..." /> : null}
+      <header className="screen-header">
+        <button type="button" className="back-button" onClick={onBack} aria-label="Quay lại">←</button>
+        <div>
+          <p className="screen-title">Tình hình số thứ tự</p>
+          <h1>{location?.name ?? 'Chọn đơn vị'}</h1>
+          <p>{location?.address ?? 'Chưa có địa điểm'}</p>
+        </div>
+      </header>
+      <button type="button" className="secondary-button" onClick={onRefresh}>Làm mới</button>
+      {loading ? <LoadingState label="Đang tải tình hình..." /> : null}
       {queueStatus !== null ? (
         <>
-          <section className="status-card">
-            <h2>Trạng thái hiện tại</h2>
-            <p>Trạng thái đặt số: {queueStatus.bookingEnabled ? 'Đang hoạt động' : 'Tạm dừng'}</p>
-            <p>Ngày: {formatDateTime(queueStatus.currentDate)}</p>
-            <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>
-              Làm mới
-            </button>
+          <section className="section-block">
+            <SectionTitle title="Danh sách quầy" subtitle="Quầy phục vụ" />
+            <div className="counter-list">
+              {queueStatus.counters.map((counter) => (
+                <article key={counter.counterId} className="counter-card">
+                  <strong>{counter.counterName}</strong>
+                  <span>{counter.status}</span>
+                  <span>Đang gọi: {counter.currentTicketNumber ?? 'Chưa có'}</span>
+                  <span>Dịch vụ: {counter.servingServiceName ?? 'Chưa phục vụ'}</span>
+                  <span>Cập nhật: {formatDateTime(counter.updatedAt)}</span>
+                </article>
+              ))}
+            </div>
           </section>
-
-          <section className="counter-block">
-            <SectionHeading kicker="Quầy" title="Danh sách quầy" />
-            {queueStatus.counters.length === 0 ? (
-              <section className="empty-card">
-                <h2>Chưa có quầy phục vụ</h2>
-                <p>Địa điểm này chưa cấu hình quầy nào để hiển thị.</p>
-              </section>
-            ) : (
-              <div className="counter-list">
-                {queueStatus.counters.map((counter) => (
-                  <article key={counter.counterId} className="counter-card">
-                    <strong>{counter.counterName}</strong>
-                    <span>{counterStatusLabel(counter)}</span>
-                    <span>
-                      Đang gọi: {counter.currentTicketNumber ?? 'Chưa có số'}
-                    </span>
-                    <span>
-                      Dịch vụ: {counter.servingServiceName ?? 'Chưa phục vụ'}
-                    </span>
-                    <span>Cập nhật: {formatDateTime(counter.updatedAt)}</span>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="counter-block">
-            <SectionHeading kicker="Đang chờ" title="Danh sách chờ" />
-            {queueStatus.waitingTickets.length === 0 ? (
-              <section className="empty-card">
-                <h2>Chưa có vé chờ</h2>
-                <p>Hiện chưa có lượt nào đang chờ tại địa điểm này.</p>
-              </section>
-            ) : (
-              <div className="waiting-list">
-                {queueStatus.waitingTickets.map((booking) => (
-                  <article key={booking.ticketId} className="waiting-card">
-                    <strong>#{booking.ticketNumber}</strong>
-                    <span>{booking.serviceName}</span>
-                    <span>{statusLabel(booking.status)}</span>
-                  </article>
-                ))}
-              </div>
-            )}
+          <section className="section-block">
+            <SectionTitle title="Danh sách chờ" subtitle="Đang chờ" />
+            {queueStatus.waitingTickets.length === 0 ? <p>Chưa có vé chờ.</p> : queueStatus.waitingTickets.map((ticket) => <article key={ticket.ticketId} className="ticket-card"><strong>#{ticket.ticketNumber}</strong><span>{ticket.serviceName}</span><span>{ticket.status}</span></article>)}
           </section>
         </>
-      ) : null}
-    </section>
-  );
-}
-
-function PublicServicePlaceholderScreen({ onBack }: { readonly onBack: () => void }) {
-  return (
-    <section className="flow-screen">
-      <ScreenHeader
-        title="Cổng dịch vụ công quốc gia"
-        heroTitle="Cổng dịch vụ công quốc gia"
-        description="Chức năng sẽ được tích hợp sau"
-        onBack={onBack}
-      />
-      <section className="placeholder-card">
-        <h2>Cổng dịch vụ công quốc gia</h2>
-        <p>Chức năng này sẽ được tích hợp sau.</p>
-        <button type="button" onClick={onBack}>
-          Về Trang Chủ
-        </button>
-      </section>
-    </section>
-  );
-}
-
-function CaseLookupScreen({
-  caseCode,
-  result,
-  errorMessage,
-  onBack,
-  onCaseCodeChange,
-  onSubmit,
-}: {
-  readonly caseCode: string;
-  readonly result: CaseLookupResult | null;
-  readonly errorMessage: string | null;
-  readonly onBack: () => void;
-  readonly onCaseCodeChange: (value: string) => void;
-  readonly onSubmit: () => void;
-}) {
-  return (
-    <section className="flow-screen">
-      <ScreenHeader
-        title="Tra cứu hồ sơ"
-        heroTitle="Tra cứu hồ sơ"
-        description="Dữ liệu tra cứu ở giai đoạn này là mô phỏng"
-        onBack={onBack}
-      />
-      <section className="lookup-card">
-        <label htmlFor="case-code">Mã hồ sơ</label>
-        <input
-          id="case-code"
-          value={caseCode}
-          onChange={(event) => onCaseCodeChange(event.target.value)}
-          placeholder="Nhập mã hồ sơ"
-        />
-        <button type="button" className="primary-button" onClick={onSubmit}>
-          Tra cứu
-        </button>
-        {errorMessage !== null ? <p className="inline-error">{errorMessage}</p> : null}
-      </section>
-      {result !== null ? (
-        <section className="lookup-result-card">
-          <h2>Kết quả tra cứu</h2>
-          <dl>
-            <div>
-              <dt>Mã hồ sơ</dt>
-              <dd>{result.caseCode}</dd>
-            </div>
-            <div>
-              <dt>Trạng thái</dt>
-              <dd>{result.status}</dd>
-            </div>
-            <div>
-              <dt>Ngày tiếp nhận</dt>
-              <dd>{formatDateTime(result.receivedAt)}</dd>
-            </div>
-            <div>
-              <dt>Ghi chú</dt>
-              <dd>{result.note}</dd>
-            </div>
-          </dl>
-        </section>
       ) : null}
     </section>
   );
@@ -849,180 +490,129 @@ export function App({ apiClient, initializeRuntime }: AppProps = {}) {
   const api = useMemo(() => apiClient ?? createQmsApiClient(), [apiClient]);
   const [runtimeState, setRuntimeState] = useState<ZaloRuntimeState>({ phase: 'initializing' });
   const [screen, setScreen] = useState<Screen>('home');
-  const [loadingAction, setLoadingAction] = useState<LoadingAction>('bootstrap');
+  const [loading, setLoading] = useState<LoadingTarget>('bootstrap');
   const [error, setError] = useState<UiError | null>(null);
-  const [homeNotice, setHomeNotice] = useState<string | null>(null);
-  const [locations, setLocations] = useState<readonly QmsLocation[]>([]);
-  const [services, setServices] = useState<readonly QmsService[]>([]);
-  const [bookings, setBookings] = useState<readonly QmsTicket[]>([]);
-  const [queueStatus, setQueueStatus] = useState<QmsQueueStatus | null>(null);
-  const [selectedLocationId, setSelectedLocationId] = useState('');
+  const [locations, setLocations] = useState<readonly LocationModel[]>([]);
+  const [areas, setAreas] = useState<readonly AreaModel[]>([]);
+  const [services, setServices] = useState<readonly ServiceModel[]>([]);
+  const [currentBooking, setCurrentBooking] = useState<QmsTicketDto | null>(null);
+  const [bookingHistory, setBookingHistory] = useState<readonly QmsTicketDto[]>([]);
+  const [queueStatus, setQueueStatus] = useState<QmsQueueStatusDto | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<LocationModel | null>(null);
+  const [selectedAreaId, setSelectedAreaId] = useState('');
   const [selectedServiceId, setSelectedServiceId] = useState('');
-  const [selectedBooking, setSelectedBooking] = useState<QmsTicket | null>(null);
-  const [caseCode, setCaseCode] = useState('');
-  const [caseResult, setCaseResult] = useState<CaseLookupResult | null>(null);
-  const [caseErrorMessage, setCaseErrorMessage] = useState<string | null>(null);
+  const [fullName, setFullName] = useState('');
+  const [bookingDate, setBookingDate] = useState(() => toLocalDateValue(new Date()));
+  const bookingInFlight = useRef(false);
+  const requestController = useRef<AbortController | null>(null);
+  const navigate = useCallback((nextScreen: Screen) => {
+    window.history.pushState({ qmsScreen: nextScreen }, '', window.location.href);
+    setScreen(nextScreen);
+  }, []);
 
-  const selectedLocation = useMemo(
-    () => locations.find((location) => location.locationId === selectedLocationId) ?? null,
-    [locations, selectedLocationId],
-  );
-  const selectedQueueLocation = useMemo(
-    () => locations.find((location) => location.locationId === queueStatus?.locationId) ?? null,
-    [locations, queueStatus?.locationId],
-  );
-  const serviceTargetLocation = selectedLocation;
-
-  const loadLocations = useCallback(
-    async (signal?: AbortSignal): Promise<readonly QmsLocation[]> => {
-      setLoadingAction('locations');
-      setError(null);
-      try {
-        const loaded = await api.getLocations(signal);
-        setLocations(loaded);
-        return loaded;
-      } catch (caught) {
-        if (signal?.aborted !== true) {
-          setError(mapApiError(caught, 'locations'));
-        }
-        return [];
-      } finally {
-        if (signal?.aborted !== true) {
-          setLoadingAction(null);
-        }
-      }
-    },
-    [api],
-  );
-
-  const loadServices = useCallback(
-    async (locationId: string, signal?: AbortSignal): Promise<void> => {
-      setLoadingAction('services');
-      setError(null);
-      setSelectedLocationId(locationId);
-      setSelectedServiceId('');
-      try {
-        const loaded = await api.getServices(locationId, signal);
-        setServices(loaded);
-      } catch (caught) {
-        if (signal?.aborted !== true) {
-          setError(mapApiError(caught, 'services'));
-        }
-      } finally {
-        if (signal?.aborted !== true) {
-          setLoadingAction(null);
-        }
-      }
-    },
-    [api],
-  );
-
-  const loadBookings = useCallback(
-    async (signal?: AbortSignal): Promise<void> => {
-      setLoadingAction('bookings');
-      setError(null);
-      try {
-        const loaded = await api.listTickets({}, signal);
-        setBookings(loaded);
-      } catch (caught) {
-        if (signal?.aborted !== true) {
-          setError(mapApiError(caught, 'bookings'));
-        }
-      } finally {
-        if (signal?.aborted !== true) {
-          setLoadingAction(null);
-        }
-      }
-    },
-    [api],
-  );
-
-  const loadQueueStatus = useCallback(
-    async (locationId: string, signal?: AbortSignal): Promise<void> => {
-      setLoadingAction('queue');
-      setError(null);
-      setSelectedLocationId(locationId);
-      try {
-        const loaded = await api.getQueueStatus(locationId, signal);
-        setQueueStatus(loaded);
-      } catch (caught) {
-        if (signal?.aborted !== true) {
-          setError(mapApiError(caught, 'queue'));
-        }
-      } finally {
-        if (signal?.aborted !== true) {
-          setLoadingAction(null);
-        }
-      }
-    },
-    [api],
-  );
-
-  const refreshSelectedBooking = useCallback(async (): Promise<void> => {
-    if (selectedBooking === null) {
-      return;
-    }
-    setLoadingAction('detail');
+  const loadLocations = useCallback(async () => {
+    setLoading('locations');
     setError(null);
     try {
-      const refreshed = await api.getTicket(selectedBooking.ticketId);
-      setSelectedBooking(refreshed);
-      setBookings((current) =>
-        current.map((booking) => (booking.ticketId === refreshed.ticketId ? refreshed : booking)),
+      const result = await api.getLocations(requestController.current?.signal);
+      setLocations(result.map(mapLocation));
+      return result;
+    } catch (caught) {
+      setError(mapApiError(caught, 'locations'));
+      return [];
+    } finally {
+      setLoading(null);
+    }
+  }, [api]);
+
+  const loadAreas = useCallback(async (location: LocationModel) => {
+    setLoading('areas');
+    setError(null);
+    setSelectedLocation(location);
+    setSelectedAreaId('');
+    setSelectedServiceId('');
+    setAreas([]);
+    setServices([]);
+    try {
+      const loadedAreas = await api.getAreas(location.id, requestController.current?.signal);
+      setAreas(loadedAreas.map(mapArea));
+      return loadedAreas;
+    } catch (caught) {
+      setError(mapApiError(caught, 'areas'));
+      return [] as readonly QmsAreaDto[];
+    } finally {
+      setLoading(null);
+    }
+  }, [api]);
+
+  const loadServices = useCallback(async (areaId: string) => {
+    setSelectedAreaId(areaId);
+    setSelectedServiceId('');
+    setServices([]);
+    if (selectedLocation === null) {
+      return;
+    }
+    setLoading('services');
+    setError(null);
+    try {
+      const loadedServices = await api.getServices(
+        selectedLocation.id,
+        areaId,
+        requestController.current?.signal,
       );
+      setServices(loadedServices.map(mapService));
     } catch (caught) {
-      setError(mapApiError(caught, 'detail'));
+      setError(mapApiError(caught, 'services'));
     } finally {
-      setLoadingAction(null);
+      setLoading(null);
     }
-  }, [api, selectedBooking]);
+  }, [api, selectedLocation]);
 
-  const createBooking = useCallback(async (): Promise<void> => {
-    if (selectedLocationId.length === 0 || selectedServiceId.length === 0) {
-      return;
-    }
-    setLoadingAction('create');
+  const loadQueue = useCallback(async (locationId: string) => {
+    setLoading('queue');
     setError(null);
+    const matchedLocation = locations.find((item) => item.id === locationId) ?? null;
+    setSelectedLocation(matchedLocation);
     try {
-      const created = await api.createTicket({
-        locationId: selectedLocationId,
-        serviceId: selectedServiceId,
-      });
-      setSelectedBooking(created);
-      setBookings((current) => [created, ...current.filter((booking) => booking.ticketId !== created.ticketId)]);
-      setScreen('booking-detail');
-      await loadQueueStatus(created.locationId);
+      const result = await api.getQueueStatus(locationId, requestController.current?.signal);
+      setQueueStatus(result);
     } catch (caught) {
-      setError(mapApiError(caught, 'create'));
+      setError(mapApiError(caught, 'queue'));
     } finally {
-      setLoadingAction(null);
+      setLoading(null);
     }
-  }, [api, loadQueueStatus, selectedLocationId, selectedServiceId]);
+  }, [api, locations]);
 
-  const cancelBooking = useCallback(async (): Promise<void> => {
-    if (selectedBooking === null) {
-      return;
-    }
-    setLoadingAction('cancel');
+  const loadHistory = useCallback(async (locationId: string) => {
+    setLoading('history');
     setError(null);
+    const matchedLocation = locations.find((item) => item.id === locationId) ?? null;
+    setSelectedLocation(matchedLocation);
     try {
-      const cancelled = await api.cancelTicket(selectedBooking.ticketId);
-      setSelectedBooking(cancelled);
-      setBookings((current) =>
-        current.map((booking) => (booking.ticketId === cancelled.ticketId ? cancelled : booking)),
-      );
-      await loadQueueStatus(cancelled.locationId);
+      const [current, history] = await Promise.all([
+        api.getCurrentBooking(locationId, requestController.current?.signal),
+        api.listBookingHistory(locationId, requestController.current?.signal),
+      ]);
+      setCurrentBooking(current);
+      setBookingHistory(history);
     } catch (caught) {
-      setError(mapApiError(caught, 'cancel'));
+      setError(mapApiError(caught, 'history'));
     } finally {
-      setLoadingAction(null);
+      setLoading(null);
     }
-  }, [api, loadQueueStatus, selectedBooking]);
+  }, [api, locations]);
+
+  useEffect(() => {
+    requestController.current = new AbortController();
+    return () => {
+      requestController.current?.abort();
+      requestController.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
-    const init = initializeRuntime ?? (() => initializeZaloRuntime(getRuntimeConfig()));
-    void init()
+    void (initializeRuntime ?? (() => initializeZaloRuntime(getRuntimeConfig())))()
       .then((state) => {
         if (active) {
           setRuntimeState(state);
@@ -1039,12 +629,80 @@ export function App({ apiClient, initializeRuntime }: AppProps = {}) {
   }, [initializeRuntime]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    void loadLocations(controller.signal);
-    return () => controller.abort();
+    const loadTimer = window.setTimeout(() => {
+      void loadLocations();
+    }, 0);
+    window.history.replaceState({ qmsScreen: 'home' }, '', window.location.href);
+    const onPopState = (event: PopStateEvent): void => {
+      const historyState = event.state as { readonly qmsScreen?: unknown } | null;
+      const nextScreen = historyState?.qmsScreen;
+      setScreen(
+        nextScreen === 'home' ||
+          nextScreen === 'locations' ||
+          nextScreen === 'booking' ||
+          nextScreen === 'current-booking' ||
+          nextScreen === 'history' ||
+          nextScreen === 'queue'
+          ? nextScreen
+          : 'home',
+      );
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.clearTimeout(loadTimer);
+      window.removeEventListener('popstate', onPopState);
+    };
   }, [loadLocations]);
 
-  const retry = useCallback((): void => {
+  const createBooking = useCallback(async () => {
+    if (bookingInFlight.current || selectedLocation === null || !hasText(selectedAreaId) || !hasText(selectedServiceId) || !hasText(fullName) || !hasText(bookingDate)) {
+      return;
+    }
+    bookingInFlight.current = true;
+    setLoading('booking');
+    setError(null);
+    try {
+      const booking = await api.createBooking({
+        locationId: selectedLocation.id,
+        areaId: selectedAreaId,
+        serviceId: selectedServiceId,
+        fullName: fullName.trim(),
+        bookingDate,
+      }, requestController.current?.signal);
+      setCurrentBooking(booking);
+      setBookingHistory((current) => [booking, ...current.filter((item) => item.ticketId !== booking.ticketId)]);
+      navigate('current-booking');
+    } catch (caught) {
+      setError(mapApiError(caught, 'booking'));
+    } finally {
+      bookingInFlight.current = false;
+      setLoading(null);
+    }
+  }, [api, bookingDate, fullName, navigate, selectedAreaId, selectedLocation, selectedServiceId]);
+
+  const cancelCurrentBooking = useCallback(async () => {
+    if (bookingInFlight.current || currentBooking === null || !currentBooking.canCancel) {
+      return;
+    }
+    if (!window.confirm('Bạn có chắc muốn hủy lượt này?')) {
+      return;
+    }
+    bookingInFlight.current = true;
+    setLoading('booking-detail');
+    setError(null);
+    try {
+      const cancelled = await api.cancelTicket(currentBooking.ticketId, requestController.current?.signal);
+      setCurrentBooking(cancelled);
+      setBookingHistory((current) => [cancelled, ...current.filter((item) => item.ticketId !== cancelled.ticketId)]);
+    } catch (caught) {
+      setError(mapApiError(caught, 'booking-detail'));
+    } finally {
+      bookingInFlight.current = false;
+      setLoading(null);
+    }
+  }, [api, currentBooking]);
+
+  const retry = useCallback(() => {
     if (error === null) {
       return;
     }
@@ -1052,259 +710,126 @@ export function App({ apiClient, initializeRuntime }: AppProps = {}) {
       void loadLocations();
       return;
     }
-    if (error.retryTarget === 'services' && selectedLocationId.length > 0) {
-      void loadServices(selectedLocationId);
+    if (error.retryTarget === 'areas' && selectedLocation !== null) {
+      void loadAreas(selectedLocation);
       return;
     }
-    if (error.retryTarget === 'bookings') {
-      void loadBookings();
+    if (error.retryTarget === 'services' && selectedLocation !== null) {
+      void loadServices(selectedAreaId);
       return;
     }
-    if (error.retryTarget === 'queue' && selectedLocationId.length > 0) {
-      void loadQueueStatus(selectedLocationId);
+    if (error.retryTarget === 'queue' && selectedLocation !== null) {
+      void loadQueue(selectedLocation.id);
       return;
     }
-    if (error.retryTarget === 'create') {
-      void createBooking();
+    if (error.retryTarget === 'history' && selectedLocation !== null) {
+      void loadHistory(selectedLocation.id);
       return;
     }
-    if (error.retryTarget === 'cancel') {
-      void cancelBooking();
-      return;
-    }
-    if (error.retryTarget === 'detail') {
-      void refreshSelectedBooking();
-    }
-  }, [
-    cancelBooking,
-    createBooking,
-    error,
-    loadBookings,
-    loadLocations,
-    loadQueueStatus,
-    loadServices,
-    refreshSelectedBooking,
-    selectedLocationId,
-  ]);
-
-  const navigateHome = useCallback(() => {
-    setScreen('home');
-    setError(null);
-  }, []);
-
-  const navigateBookingLocations = useCallback(() => {
-    setScreen('booking-location');
-    setError(null);
-    if (locations.length === 0) {
-      void loadLocations();
-    }
-  }, [loadLocations, locations.length]);
-
-  const navigateBookedList = useCallback(() => {
-    setScreen('booked-list');
-    setError(null);
-    void loadBookings();
-  }, [loadBookings]);
-
-  const navigateQueueLocations = useCallback(() => {
-    setScreen('queue-location');
-    setError(null);
-    if (locations.length === 0) {
-      void loadLocations();
-    }
-  }, [loadLocations, locations.length]);
-
-  const navigatePublicService = useCallback(() => {
-    setScreen('public-service');
-    setError(null);
-  }, []);
-
-  const navigateCaseLookup = useCallback(() => {
-    setScreen('case-lookup');
-    setError(null);
-  }, []);
-
-  const selectBookingLocation = useCallback(
-    (locationId: string) => {
-      setScreen('booking-service');
-      void loadServices(locationId);
-    },
-    [loadServices],
-  );
-
-  const selectQueueLocation = useCallback(
-    (locationId: string) => {
-      setScreen('queue-status');
-      void loadQueueStatus(locationId);
-    },
-    [loadQueueStatus],
-  );
-
-  const selectBookedTicket = useCallback((booking: QmsTicket) => {
-    setSelectedBooking(booking);
-    setScreen('booking-detail');
-  }, []);
-
-  const submitCaseLookup = useCallback(() => {
-    if (!hasText(caseCode)) {
-      setCaseErrorMessage('Vui lòng nhập mã hồ sơ.');
-      setCaseResult(null);
-      return;
-    }
-    setCaseErrorMessage(null);
-    setCaseResult(createCaseLookupResult(caseCode.trim()));
-  }, [caseCode]);
-
-  const openOAInterest = useCallback(() => {
-    setHomeNotice('Chức năng theo dõi OA sẽ được nối sau khi backend sẵn sàng.');
-  }, []);
-
-  const queueButtonsDisabled = loadingAction !== null;
+  }, [error, loadAreas, loadHistory, loadLocations, loadQueue, loadServices, selectedAreaId, selectedLocation]);
 
   return (
-    <AppShell>
-      <RuntimeStrip runtimeState={runtimeState} />
-      {error !== null ? <ErrorBanner error={error} onRetry={retry} /> : null}
-
+    <main className="app-shell">
+      <section className="runtime-strip" aria-label="Trạng thái runtime">
+        {runtimeState.phase === 'initializing'
+          ? 'Đang khởi tạo...'
+          : runtimeState.phase === 'ready' && runtimeState.runtime === 'browser-development'
+            ? 'Chế độ phát triển trình duyệt'
+            : runtimeState.phase === 'ready'
+              ? 'Đang chạy trong Zalo Mini App'
+              : runtimeState.phase === 'configuration-error'
+                ? 'Cấu hình Zalo Mini App chưa đầy đủ'
+                : 'Không hỗ trợ runtime hiện tại'}
+      </section>
+      {error !== null && error.retryTarget !== 'areas' && error.retryTarget !== 'services'
+        ? <ErrorBanner error={error} onRetry={retry} />
+        : null}
       {screen === 'home' ? (
-        <HomeScreen
-          onNavigate={(next) => {
-            if (next === 'booking-location') {
-              navigateBookingLocations();
-              return;
-            }
-            if (next === 'booked-list') {
-              navigateBookedList();
-              return;
-            }
-            if (next === 'queue-location') {
-              navigateQueueLocations();
-              return;
-            }
-            if (next === 'public-service') {
-              navigatePublicService();
-              return;
-            }
-            if (next === 'case-lookup') {
-              navigateCaseLookup();
+        <HomeBanner
+          onGoBooking={() => navigate('locations')}
+          onGoHistory={() => {
+            navigate('history');
+            const locationId = selectedLocation?.id ?? locations[0]?.id;
+            if (locationId !== undefined) {
+              void loadHistory(locationId);
             }
           }}
-          onInterest={openOAInterest}
-          notice={homeNotice}
+          onGoQueue={() => {
+            navigate('queue');
+            const locationId = selectedLocation?.id ?? locations[0]?.id;
+            if (locationId !== undefined) {
+              void loadQueue(locationId);
+            }
+          }}
         />
       ) : null}
-
-      {screen === 'booking-location' ? (
-        <LocationSelectScreen
-          title="Đặt Số Trực Tuyến"
-          heroTitle="Chọn địa điểm"
-          description="Vui lòng chọn địa điểm bạn muốn đặt số để tiếp tục"
-          locations={locations}
-          loading={loadingAction === 'locations'}
-          error={error}
-          onBack={navigateHome}
-          onRetry={retry}
-          onSelect={selectBookingLocation}
-        />
+      {screen === 'locations' ? (
+        <section className="flow-screen">
+          <header className="screen-header">
+            <button type="button" className="back-button" onClick={() => setScreen('home')} aria-label="Quay lại">←</button>
+            <div>
+              <p className="screen-title">Đặt số trực tuyến</p>
+              <h1>Chọn đơn vị</h1>
+              <p>Chọn địa điểm để tiếp tục</p>
+            </div>
+          </header>
+          {loading === 'locations' ? <LoadingState label="Đang tải danh sách địa điểm..." /> : null}
+          <LocationPicker locations={locations} onSelect={(location) => { void loadAreas(location).then(() => navigate('booking')); }} />
+        </section>
       ) : null}
-
-      {screen === 'booking-service' ? (
-        <ServiceSelectScreen
-          title="Đặt Số Trực Tuyến"
-          heroTitle="Chọn dịch vụ"
-          description="Chọn dịch vụ rồi bấm lấy số thứ tự"
-          location={serviceTargetLocation}
+      {screen === 'booking' && selectedLocation !== null ? (
+        <BookingScreen
+          location={selectedLocation}
+          areas={areas}
           services={services}
-          loading={loadingAction === 'services'}
-          error={error}
+          selectedAreaId={selectedAreaId}
           selectedServiceId={selectedServiceId}
-          onBack={navigateBookingLocations}
-          onRetry={() => {
-            if (selectedLocationId.length > 0) {
-              void loadServices(selectedLocationId);
-            }
-          }}
-          onSelect={(serviceId) => setSelectedServiceId(serviceId)}
+          fullName={fullName}
+          bookingDate={bookingDate}
+          loadingArea={loading === 'areas'}
+          loadingService={loading === 'services'}
+          submitting={loading === 'booking'}
+          areaError={error?.retryTarget === 'areas' ? error : null}
+          serviceError={error?.retryTarget === 'services' ? error : null}
+          onBack={() => setScreen('locations')}
+          onSelectArea={(areaId) => void loadServices(areaId)}
+          onSelectService={(serviceId) => setSelectedServiceId(serviceId)}
+          onFullNameChange={setFullName}
+          onBookingDateChange={setBookingDate}
           onSubmit={() => void createBooking()}
-        />
-      ) : null}
-
-      {screen === 'booking-detail' && selectedBooking !== null ? (
-        <BookingDetailScreen
-          booking={selectedBooking}
-          onBackHome={navigateHome}
-          onCancel={() => void cancelBooking()}
-          onRefresh={() => void refreshSelectedBooking()}
-          cancelLoading={loadingAction === 'cancel'}
-          refreshLoading={loadingAction === 'detail'}
-        />
-      ) : null}
-
-      {screen === 'booked-list' ? (
-        <BookedTicketsScreen
-          loading={loadingAction === 'bookings'}
-          error={error}
-          bookings={bookings}
-          onBackHome={navigateHome}
-          onRetry={() => void loadBookings()}
-          onSelect={selectBookedTicket}
-        />
-      ) : null}
-
-      {screen === 'queue-location' ? (
-        <LocationSelectScreen
-          title="Tình Hình Số Thứ Tự"
-          heroTitle="Chọn địa điểm"
-          description="Vui lòng chọn địa điểm để xem tình hình số thứ tự"
-          locations={locations}
-          loading={loadingAction === 'locations'}
-          error={error}
-          onBack={navigateHome}
           onRetry={retry}
-          onSelect={selectQueueLocation}
         />
       ) : null}
-
-      {screen === 'queue-status' ? (
-        <QueueStatusScreen
-          title="Tình Hình Số Thứ Tự"
-          heroTitle="Tình Hình Số Thứ Tự"
-          description="Trạng thái phục vụ được mô phỏng từ mock server"
-          location={selectedQueueLocation}
+      {screen === 'current-booking' && currentBooking !== null ? (
+        <BookingDetailScreen
+          booking={currentBooking}
+          cancelling={loading === 'booking-detail'}
+          onCancel={() => void cancelCurrentBooking()}
+          onHome={() => navigate('home')}
+        />
+      ) : null}
+      {screen === 'history' && selectedLocation !== null ? (
+        <HistoryScreen
+          currentBooking={currentBooking}
+          history={bookingHistory}
+          loading={loading === 'history'}
+          onBack={() => setScreen('home')}
+        />
+      ) : null}
+      {screen === 'queue' ? (
+        <QueueScreen
+          location={selectedLocation}
           queueStatus={queueStatus}
-          loading={queueButtonsDisabled}
-          error={error}
-          onBack={navigateQueueLocations}
-          onRetry={() => {
-            if (selectedLocationId.length > 0) {
-              void loadQueueStatus(selectedLocationId);
-            }
-          }}
+          loading={loading === 'queue'}
+          onBack={() => setScreen('home')}
           onRefresh={() => {
-            if (selectedLocationId.length > 0) {
-              void loadQueueStatus(selectedLocationId);
+            if (selectedLocation !== null) {
+              void loadQueue(selectedLocation.id);
             }
           }}
         />
       ) : null}
-
-      {screen === 'public-service' ? <PublicServicePlaceholderScreen onBack={navigateHome} /> : null}
-
-      {screen === 'case-lookup' ? (
-        <CaseLookupScreen
-          caseCode={caseCode}
-          result={caseResult}
-          errorMessage={caseErrorMessage}
-          onBack={navigateHome}
-          onCaseCodeChange={(value) => {
-            setCaseCode(value);
-            setCaseErrorMessage(null);
-          }}
-          onSubmit={submitCaseLookup}
-        />
-      ) : null}
-
-      {loadingAction === 'bootstrap' ? <LoadingState label="Đang tải danh mục thử nghiệm..." /> : null}
-    </AppShell>
+      {loading === 'bootstrap' ? <LoadingState label="Đang tải danh mục..." /> : null}
+    </main>
   );
 }

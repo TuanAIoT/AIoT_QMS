@@ -69,17 +69,42 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   }
 }
 
-function requireOnlyLocationAndService(value: unknown): { readonly locationId: string; readonly serviceId: string } {
-  if (!isRecord(value) || !exactKeys(value, ['locationId', 'serviceId'])) {
-    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'Body chỉ được chứa locationId và serviceId.');
+function requireCreateBookingBody(value: unknown): {
+  readonly locationId: string;
+  readonly areaId: string;
+  readonly serviceId: string;
+  readonly fullName: string;
+  readonly bookingDate: string;
+} {
+  if (!isRecord(value) || !exactKeys(value, ['areaId', 'bookingDate', 'fullName', 'locationId', 'serviceId'])) {
+    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'Body chỉ được chứa locationId, areaId, serviceId, bookingDate và fullName.');
   }
   if (typeof value.locationId !== 'string' || value.locationId.trim().length === 0) {
     throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'locationId không hợp lệ.');
   }
+  if (typeof value.areaId !== 'string' || value.areaId.trim().length === 0) {
+    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'areaId không hợp lệ.');
+  }
   if (typeof value.serviceId !== 'string' || value.serviceId.trim().length === 0) {
     throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'serviceId không hợp lệ.');
   }
-  return { locationId: value.locationId, serviceId: value.serviceId };
+  if (typeof value.fullName !== 'string' || value.fullName.trim().length === 0) {
+    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'fullName không hợp lệ.');
+  }
+  if (typeof value.bookingDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.bookingDate)) {
+    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'bookingDate không hợp lệ.');
+  }
+  const bookingDate = new Date(`${value.bookingDate}T00:00:00.000Z`);
+  if (Number.isNaN(bookingDate.getTime()) || bookingDate.toISOString().slice(0, 10) !== value.bookingDate) {
+    throw new MockZaloQmsError(400, 'INVALID_REQUEST', 'bookingDate không hợp lệ.');
+  }
+  return {
+    locationId: value.locationId,
+    areaId: value.areaId,
+    serviceId: value.serviceId,
+    fullName: value.fullName,
+    bookingDate: value.bookingDate,
+  };
 }
 
 function requireOptionalLocationId(value: unknown): string | undefined {
@@ -171,6 +196,12 @@ class NativeMockZaloQmsServer implements MockZaloQmsServer {
         return;
       }
 
+      const areasMatch = url.pathname.match(/^\/api\/zalo\/locations\/([^/]+)\/areas$/);
+      if (method === 'GET' && areasMatch?.[1] !== undefined) {
+        this.sendSuccess(response, this.state.listAreas(parseTicketId(areasMatch[1])));
+        return;
+      }
+
       const locationMatch = url.pathname.match(/^\/api\/zalo\/locations\/([^/]+)$/);
       if (method === 'GET' && locationMatch?.[1] !== undefined) {
         this.sendSuccess(response, this.state.getLocation(parseTicketId(locationMatch[1])));
@@ -179,18 +210,37 @@ class NativeMockZaloQmsServer implements MockZaloQmsServer {
 
       const servicesMatch = url.pathname.match(/^\/api\/zalo\/locations\/([^/]+)\/services$/);
       if (method === 'GET' && servicesMatch?.[1] !== undefined) {
-        this.sendSuccess(response, this.state.listServices(parseTicketId(servicesMatch[1])));
+        this.sendSuccess(
+          response,
+          this.state.listServices(parseTicketId(servicesMatch[1]), url.searchParams.get('areaId') ?? undefined),
+        );
         return;
       }
 
       if (method === 'GET' && url.pathname === '/api/zalo/services') {
-        this.sendSuccess(response, this.state.listServices(url.searchParams.get('locationId') ?? undefined));
+        const locationId = url.searchParams.get('locationId');
+        if (locationId === null) {
+          this.sendError(response, 400, 'INVALID_REQUEST', 'locationId không hợp lệ.');
+          return;
+        }
+        this.sendSuccess(response, this.state.listServices(locationId));
         return;
       }
 
       const queueStatusMatch = url.pathname.match(/^\/api\/zalo\/locations\/([^/]+)\/queue-status$/);
       if (method === 'GET' && queueStatusMatch?.[1] !== undefined) {
         this.sendSuccess(response, this.state.getQueueStatus(parseTicketId(queueStatusMatch[1])));
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/zalo/bookings') {
+        this.sendSuccess(
+          response,
+          this.state.listTickets(
+            url.searchParams.get('locationId') ?? undefined,
+            parseTicketStatus(url.searchParams.get('status')),
+          ),
+        );
         return;
       }
 
@@ -205,20 +255,32 @@ class NativeMockZaloQmsServer implements MockZaloQmsServer {
         return;
       }
 
-      if (method === 'POST' && url.pathname === '/api/zalo/tickets') {
-        const body = requireOnlyLocationAndService(await readJson(request));
-        const ticket = this.state.createTicket(body.locationId, body.serviceId);
+      if (method === 'POST' && url.pathname === '/api/zalo/bookings') {
+        const body = requireCreateBookingBody(await readJson(request));
+        const ticket = this.state.createBooking(body.locationId, body.areaId, body.serviceId, body.fullName, body.bookingDate);
         this.sendSuccess(response, ticket, 201);
         return;
       }
 
-      const ticketMatch = url.pathname.match(/^\/api\/zalo\/tickets\/([^/]+)$/);
+      const currentBookingMatch = url.pathname.match(/^\/api\/zalo\/locations\/([^/]+)\/bookings\/current$/);
+      if (method === 'GET' && currentBookingMatch?.[1] !== undefined) {
+        this.sendSuccess(response, this.state.getCurrentBooking(parseTicketId(currentBookingMatch[1])));
+        return;
+      }
+
+      const historyMatch = url.pathname.match(/^\/api\/zalo\/locations\/([^/]+)\/bookings\/history$/);
+      if (method === 'GET' && historyMatch?.[1] !== undefined) {
+        this.sendSuccess(response, this.state.listHistory(parseTicketId(historyMatch[1])));
+        return;
+      }
+
+      const ticketMatch = url.pathname.match(/^\/api\/zalo\/bookings\/([^/]+)$/);
       if (method === 'GET' && ticketMatch?.[1] !== undefined) {
         this.sendSuccess(response, this.state.getTicket(parseTicketId(ticketMatch[1])));
         return;
       }
 
-      const cancelMatch = url.pathname.match(/^\/api\/zalo\/tickets\/([^/]+)\/cancel$/);
+      const cancelMatch = url.pathname.match(/^\/api\/zalo\/bookings\/([^/]+)\/cancel$/);
       if (method === 'POST' && cancelMatch?.[1] !== undefined) {
         this.sendSuccess(response, this.state.cancelTicket(parseTicketId(cancelMatch[1])));
         return;

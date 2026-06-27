@@ -292,9 +292,11 @@ select {
 
 .location-card {
   display: grid;
-  grid-template-columns: 40px 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
+  width: 100%;
+  min-width: 0;
   text-align: left;
   color: #102033;
 }
@@ -312,11 +314,53 @@ select {
 .location-copy {
   display: grid;
   gap: 4px;
+  min-width: 0;
+}
+
+.location-copy strong,
+.location-copy span {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .location-arrow {
+  grid-column: 2;
+  justify-self: end;
+  flex: 0 0 auto;
   color: #6c7a90;
   font-size: 1.2rem;
+}
+
+.date-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(76px, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 2px 0 6px;
+}
+
+.date-chip {
+  min-width: 76px;
+  border: 1px solid #d7e2f2;
+  padding: 12px 8px;
+  color: #334155;
+  background: #ffffff;
+  white-space: normal;
+}
+
+.date-chip.selected {
+  border-color: #0068ff;
+  color: #ffffff;
+  background: #0068ff;
+  box-shadow: 0 6px 16px rgb(0 104 255 / 24%);
+}
+
+.empty-inline {
+  margin: 4px 0;
+  color: #5d6c82;
 }
 
 .service-card {
@@ -556,13 +600,11 @@ select {
     grid-template-columns: 1fr;
   }
 
-  .location-card,
   .service-card,
   .ticket-list-card {
     grid-template-columns: 40px 1fr;
   }
 
-  .location-arrow,
   .service-state,
   .ticket-list-time {
     grid-column: 2;
@@ -571,5 +613,9 @@ select {
 
   .ticket-list-time {
     margin-top: -2px;
+  }
+
+  .location-card {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }
