@@ -249,17 +249,11 @@ function BookingScreen({
     <section className="flow-screen">
       <header className="screen-header">
         <button type="button" className="back-button" onClick={onBack} aria-label="Quay lại">←</button>
-        <div>
-          <p className="screen-title">Đặt số trực tuyến</p>
-          <h1>Chọn dịch vụ</h1>
-          <p>{location.name}</p>
+        <div className="screen-header-copy location-hero-copy">
+          <h1>{location.name}</h1>
+          <p className="location-hero-address">{location.address}</p>
         </div>
       </header>
-
-      <section className="context-card">
-        <strong>{location.name}</strong>
-        <span>{location.address}</span>
-      </section>
 
       <section className="section-block">
         <SectionTitle title="Bảng lịch ngày" />
@@ -461,24 +455,51 @@ function HistoryScreen({
 
 function QueueScreen({ locations, location, queueStatus, currentTicketId, loading, onBack, onSelectLocation, onRefresh }: { readonly locations: readonly LocationModel[]; readonly location: LocationModel | null; readonly queueStatus: QmsQueueStatusDto | null; readonly currentTicketId: string | null; readonly loading: boolean; readonly onBack: () => void; readonly onSelectLocation: (location: LocationModel) => void; readonly onRefresh: () => void; }) {
   const [expandedCounters, setExpandedCounters] = useState<ReadonlySet<string>>(() => new Set());
+  const [showLocationList, setShowLocationList] = useState(location === null);
   const isMine = (ticketId: string): boolean => ticketId === currentTicketId;
+
+  useEffect(() => {
+    setShowLocationList(location === null);
+  }, [location]);
+
+  const handleSelectLocation = (nextLocation: LocationModel): void => {
+    setShowLocationList(false);
+    onSelectLocation(nextLocation);
+  };
+
   return (
     <section className="flow-screen">
       <header className="screen-header">
         <button type="button" className="back-button" onClick={onBack} aria-label="Quay lại">←</button>
-        <div>
+        <div className="screen-header-copy">
           <p className="screen-title">Tình hình số thứ tự</p>
           <h1>{location?.name ?? 'Chọn đơn vị'}</h1>
-          <p>{location?.address ?? 'Chưa có địa điểm'}</p>
+          <p>{location?.address ?? 'Chọn đơn vị để xem tình hình'}</p>
         </div>
       </header>
-      {location === null ? (
-        <section className="section-block">
-          <SectionTitle title="Chọn đơn vị" subtitle="Bước 1" />
-          <p className="empty-inline">Chọn đơn vị để xem tình hình số thứ tự.</p>
-          <LocationPicker locations={locations} onSelect={onSelectLocation} />
+      {location === null || showLocationList ? (
+        <section className="section-block queue-location-section">
+          <p className="section-kicker">Chọn đơn vị</p>
+          <div className="location-list queue-location-list">
+            {locations.map((item) => (
+              <button key={item.id} type="button" className="location-card" onClick={() => handleSelectLocation(item)}>
+                <span className="location-copy">
+                  <strong>{item.name}</strong>
+                  <span>{item.address}</span>
+                </span>
+                <span className="location-arrow" aria-hidden="true">→</span>
+              </button>
+            ))}
+          </div>
         </section>
-      ) : <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang làm mới...' : 'Làm mới'}</button>}
+      ) : (
+        <section className="section-block queue-location-section">
+          <div className="queue-action-row">
+            <button type="button" className="secondary-button queue-action-button" onClick={() => setShowLocationList(true)}>Chọn lại đơn vị</button>
+            <button type="button" className="secondary-button queue-action-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang làm mới...' : 'Làm mới'}</button>
+          </div>
+        </section>
+      )}
       {loading ? <LoadingState label="Đang tải tình hình..." /> : null}
       {!loading && location !== null && queueStatus?.counters.length === 0 ? <article className="empty-card"><p>Đơn vị chưa có quầy đang hoạt động.</p></article> : null}
       {queueStatus !== null && queueStatus.counters.length > 0 ? (

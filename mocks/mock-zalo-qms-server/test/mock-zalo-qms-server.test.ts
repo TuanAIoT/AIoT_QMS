@@ -34,14 +34,19 @@ describe('mock zalo qms server', () => {
     const locations = await request<{ readonly ok: true; readonly data: readonly { readonly locationId: string; readonly locationName: string; readonly address: string }[] }>('/api/zalo/locations');
     const areas = await request<{ readonly ok: true; readonly data: readonly { readonly areaId: string; readonly areaName: string; readonly locationId: string }[] }>('/api/zalo/locations/loc-cumta/areas');
     const services = await request<{ readonly ok: true; readonly data: readonly { readonly serviceId: string; readonly serviceName: string; readonly areaId: string }[] }>('/api/zalo/locations/loc-cumta/services?areaId=area-justice');
+    const longLocationServices = await request<{ readonly ok: true; readonly data: readonly { readonly serviceId: string; readonly locationId: string }[] }>('/api/zalo/locations/loc-thuduc-long/services');
 
     expect(locations.status).toBe(200);
     expect(areas.status).toBe(200);
     expect(services.status).toBe(200);
+    expect(longLocationServices.status).toBe(200);
     expect(locations.body.data[0]?.locationId).toBe('loc-cumta');
+    expect(locations.body.data.length).toBeGreaterThanOrEqual(10);
+    expect(locations.body.data.some((location) => location.locationName.includes('Thủ Đức'))).toBe(true);
     expect(areas.body.data[0]?.areaId).toBe('area-justice');
     expect(areas.body.data.every((area) => area.locationId === 'loc-cumta')).toBe(true);
     expect(services.body.data[0]?.areaId).toBe('area-justice');
+    expect(longLocationServices.body.data.length).toBeGreaterThanOrEqual(1);
   });
 
   it('creates a booking and exposes current/history/queue data', async () => {

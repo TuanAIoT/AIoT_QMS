@@ -10,7 +10,16 @@ import type { QmsBookingApiClient, QmsLocationDto, QmsQueueStatusDto, QmsService
 
 const LOCATIONS: readonly QmsLocationDto[] = [
   { locationId: 'loc-001', locationName: 'TRUNG TÂM PHỤC VỤ HÀNH CHÍNH CÔNG XÃ CƯ MTA', address: '01 Đường Mô Phỏng, Xã Cư Mta' },
-  { locationId: 'loc-002', locationName: 'ĐƠN VỊ THỬ NGHIỆM 02', address: '02 Đường Mô Phỏng' },
+  { locationId: 'loc-002', locationName: 'AIoT Making Innovation', address: 'Khu thử nghiệm AIoT, Thành phố Hồ Chí Minh' },
+  { locationId: 'loc-003', locationName: 'UBND Phường Xuân Phương', address: 'Số 12 Phố Trịnh Văn Bô, Phường Xuân Phương, Hà Nội' },
+  { locationId: 'loc-004', locationName: 'Trung tâm Hành chính công Quận Nam Từ Liêm', address: 'Đường Nguyễn Cơ Thạch, Quận Nam Từ Liêm, Hà Nội' },
+  { locationId: 'loc-005', locationName: 'Bộ phận Một cửa Xã Ea Ktur', address: 'Thôn 5, Xã Ea Ktur, Huyện Cư Kuin, Đắk Lắk' },
+  { locationId: 'loc-006', locationName: 'Trung tâm Phục vụ hành chính công Thành phố Hà Nội', address: '258 Võ Chí Công, Tây Hồ, Hà Nội' },
+  { locationId: 'loc-007', locationName: 'UBND Xã Tân Lập', address: 'Khu trung tâm xã Tân Lập, Huyện Đan Phượng, Hà Nội' },
+  { locationId: 'loc-008', locationName: 'Phòng Tiếp nhận và Trả kết quả Huyện Đông Anh', address: 'Tổ 3 Thị trấn Đông Anh, Huyện Đông Anh, Hà Nội' },
+  { locationId: 'loc-009', locationName: 'Trung tâm Dịch vụ công Tỉnh Đắk Lắk', address: '09 Nguyễn Tất Thành, Thành phố Buôn Ma Thuột, Đắk Lắk' },
+  { locationId: 'loc-010', locationName: 'Điểm tiếp nhận hồ sơ Khu công nghệ cao', address: 'Lô E2a, Khu công nghệ cao, Thành phố Thủ Đức, Thành phố Hồ Chí Minh' },
+  { locationId: 'loc-011', locationName: 'Trung tâm Hỗ trợ thủ tục hành chính và tiếp nhận hồ sơ liên thông Thành phố Thủ Đức', address: '01 Đường Sáng Tạo, Phường Hiệp Phú, Thành phố Thủ Đức, Thành phố Hồ Chí Minh' },
 ];
 
 const AREAS = [
@@ -51,7 +60,7 @@ function createTicket(overrides: Partial<QmsTicketDto> = {}): QmsTicketDto {
   };
 }
 
-function createQueueStatus(): QmsQueueStatusDto {
+function createQueueStatus(overrides: Partial<QmsQueueStatusDto> = {}): QmsQueueStatusDto {
   return {
     locationId: 'loc-001',
     locationName: LOCATIONS[0]!.locationName,
@@ -70,6 +79,7 @@ function createQueueStatus(): QmsQueueStatusDto {
         updatedAt: '2026-06-26T00:10:00.000Z',
       },
     ],
+    ...overrides,
   };
 }
 
@@ -199,6 +209,10 @@ describe('Zalo App booking flow', () => {
     renderApp(api);
 
     fireEvent.click(await screen.findByRole('button', { name: /Tình hình số thứ tự/ }));
+    expect(await screen.findByRole('heading', { level: 1, name: LOCATIONS[0]!.locationName })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Chọn lại đơn vị' })).toBeTruthy();
+    expect(document.body.textContent?.toUpperCase()).not.toContain('BƯỚC 1');
+    expect(document.body.textContent).not.toContain('Đơn vị đang xem');
     expect(await screen.findByText('Tình hình số thứ tự')).toBeTruthy();
     expect(await screen.findByText(/Quầy 01 - Khai sinh/)).toBeTruthy();
     expect(screen.getByText('Số đang chờ: 1')).toBeTruthy();
@@ -211,10 +225,55 @@ describe('Zalo App booking flow', () => {
     const api = createApi({ getCurrentBooking: vi.fn(async () => null) });
     renderApp(api);
     fireEvent.click(await screen.findByRole('button', { name: /Tình hình số thứ tự/ }));
-    expect(await screen.findByText('Chọn đơn vị để xem tình hình số thứ tự.')).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Chọn đơn vị' })).toBeTruthy();
+    expect(screen.getAllByRole('heading', { name: 'Chọn đơn vị' })).toHaveLength(1);
+    expect(screen.getByText('Chọn đơn vị để xem tình hình')).toBeTruthy();
+    expect(document.querySelector('.queue-location-section .section-kicker')?.textContent).toBe('Chọn đơn vị');
+    expect(document.body.textContent?.toUpperCase()).not.toContain('BƯỚC 1');
     expect(api.getQueueStatus).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: new RegExp(LOCATIONS[0]!.locationName) }));
     await waitFor(() => expect(api.getQueueStatus).toHaveBeenCalledTimes(1));
+  });
+
+  it('allows changing queue location after auto-selecting from the active booking', async () => {
+    const getQueueStatus = vi.fn(async (locationId: string) =>
+      createQueueStatus({
+        locationId,
+        locationName: locationId === 'loc-002' ? LOCATIONS[1]!.locationName : LOCATIONS[0]!.locationName,
+      }),
+    );
+    const api = createApi({ getQueueStatus });
+    renderApp(api);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Tình hình số thứ tự/ }));
+    await screen.findByText(/Quầy 01 - Khai sinh/);
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn lại đơn vị' }));
+    expect(screen.getAllByRole('button', { name: new RegExp(LOCATIONS[1]!.locationName) })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(LOCATIONS[1]!.locationName) }));
+    await waitFor(() => expect(getQueueStatus).toHaveBeenLastCalledWith('loc-002', expect.any(AbortSignal)));
+  });
+
+  it('renders a long location list without overflow helpers or break-all hacks', async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: /Đặt số trực tuyến/ }));
+    const locationCards = await screen.findAllByRole('button');
+    const selectableLocations = locationCards.filter((button) => button.classList.contains('location-card'));
+
+    expect(selectableLocations.length).toBeGreaterThanOrEqual(10);
+    expect(document.body.textContent).toContain(LOCATIONS[10]!.locationName);
+    expect(selectableLocations.every((button) => !button.className.match(/break-all/i))).toBe(true);
+  });
+
+  it('shows the selected location only once on the booking screen', async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: /Đặt số trực tuyến/ }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(LOCATIONS[0]!.locationName) }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: LOCATIONS[0]!.locationName })).toBeTruthy();
+    expect(screen.queryByText('Chọn dịch vụ')).toBeNull();
+    expect(document.querySelector('.context-card')).toBeNull();
+    expect(screen.getAllByText(LOCATIONS[0]!.locationName)).toHaveLength(1);
+    expect(screen.getAllByText(LOCATIONS[0]!.address)).toHaveLength(1);
   });
 
   it('prevents duplicate queue refresh requests', async () => {

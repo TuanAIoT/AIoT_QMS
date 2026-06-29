@@ -7,7 +7,11 @@ export const ZALO_QMS_AREAS = [
   { areaId: 'area-other', areaName: 'Các lĩnh vực khác' },
 ] as const;
 
-export const ZALO_QMS_LOCATIONS = [
+export const ZALO_QMS_LOCATIONS: readonly {
+  readonly locationId: string;
+  readonly locationName: string;
+  readonly address: string;
+}[] = [
   {
     locationId: 'loc-cumta',
     locationName: 'TRUNG TÂM PHỤC VỤ HÀNH CHÍNH CÔNG XÃ CƯ MTA',
@@ -18,16 +22,85 @@ export const ZALO_QMS_LOCATIONS = [
     locationName: 'AIoT Making Innovation',
     address: 'Khu thử nghiệm AIoT, Thành phố Hồ Chí Minh',
   },
-] as const;
+  {
+    locationId: 'loc-xuanphuong',
+    locationName: 'UBND Phường Xuân Phương',
+    address: 'Số 12 Phố Trịnh Văn Bô, Phường Xuân Phương, Hà Nội',
+  },
+  {
+    locationId: 'loc-namtuliem',
+    locationName: 'Trung tâm Hành chính công Quận Nam Từ Liêm',
+    address: 'Đường Nguyễn Cơ Thạch, Quận Nam Từ Liêm, Hà Nội',
+  },
+  {
+    locationId: 'loc-eaktur',
+    locationName: 'Bộ phận Một cửa Xã Ea Ktur',
+    address: 'Thôn 5, Xã Ea Ktur, Huyện Cư Kuin, Đắk Lắk',
+  },
+  {
+    locationId: 'loc-hanoi-center',
+    locationName: 'Trung tâm Phục vụ hành chính công Thành phố Hà Nội',
+    address: '258 Võ Chí Công, Tây Hồ, Hà Nội',
+  },
+  {
+    locationId: 'loc-tanlap',
+    locationName: 'UBND Xã Tân Lập',
+    address: 'Khu trung tâm xã Tân Lập, Huyện Đan Phượng, Hà Nội',
+  },
+  {
+    locationId: 'loc-donganh',
+    locationName: 'Phòng Tiếp nhận và Trả kết quả Huyện Đông Anh',
+    address: 'Tổ 3 Thị trấn Đông Anh, Huyện Đông Anh, Hà Nội',
+  },
+  {
+    locationId: 'loc-daklak-center',
+    locationName: 'Trung tâm Dịch vụ công Tỉnh Đắk Lắk',
+    address: '09 Nguyễn Tất Thành, Thành phố Buôn Ma Thuột, Đắk Lắk',
+  },
+  {
+    locationId: 'loc-hightech',
+    locationName: 'Điểm tiếp nhận hồ sơ Khu công nghệ cao',
+    address: 'Lô E2a, Khu công nghệ cao, Thành phố Thủ Đức, Thành phố Hồ Chí Minh',
+  },
+  {
+    locationId: 'loc-thuduc-long',
+    locationName: 'Trung tâm Hỗ trợ thủ tục hành chính và tiếp nhận hồ sơ liên thông Thành phố Thủ Đức',
+    address: '01 Đường Sáng Tạo, Phường Hiệp Phú, Thành phố Thủ Đức, Thành phố Hồ Chí Minh',
+  },
+  {
+    locationId: 'loc-baodai',
+    locationName: 'Điểm giao dịch hành chính lưu động Khu dân cư Bắc Đại lộ Thăng Long',
+    address: 'Lô B7 Đại lộ Thăng Long, Hoài Đức, Hà Nội',
+  },
+];
 
-export const ZALO_QMS_SERVICES = [
+export const ZALO_QMS_SERVICES: readonly {
+  readonly serviceId: string;
+  readonly serviceCode: string;
+  readonly serviceName: string;
+  readonly areaId: string;
+  readonly locationId: string;
+  readonly description: string;
+  readonly bookingEnabled: true;
+}[] = [
   { serviceId: 'svc-justice-1', serviceCode: 'A01', serviceName: 'Khai sinh, khai tử', areaId: 'area-justice', locationId: 'loc-cumta', description: 'Tiếp nhận hộ tịch', bookingEnabled: true },
   { serviceId: 'svc-social-1', serviceCode: 'B01', serviceName: 'Văn hóa, xã hội', areaId: 'area-social', locationId: 'loc-cumta', description: 'Dịch vụ văn hóa', bookingEnabled: true },
   { serviceId: 'svc-business-1', serviceCode: 'C01', serviceName: 'Đăng ký doanh nghiệp', areaId: 'area-business', locationId: 'loc-cumta', description: 'Hỗ trợ pháp lý', bookingEnabled: true },
   { serviceId: 'svc-other-1', serviceCode: 'D01', serviceName: 'Lĩnh vực khác', areaId: 'area-other', locationId: 'loc-cumta', description: 'Dịch vụ khác', bookingEnabled: true },
   { serviceId: 'svc-aiot-1', serviceCode: 'A02', serviceName: 'Tổng hợp AIoT', areaId: 'area-justice', locationId: 'loc-aiot', description: 'Dịch vụ thử nghiệm', bookingEnabled: true },
   { serviceId: 'svc-aiot-2', serviceCode: 'B02', serviceName: 'Hướng dẫn AIoT', areaId: 'area-social', locationId: 'loc-aiot', description: 'Dịch vụ thử nghiệm', bookingEnabled: true },
-] as const;
+  { serviceId: 'svc-xuanphuong-1', serviceCode: 'A03', serviceName: 'Chứng thực hồ sơ', areaId: 'area-justice', locationId: 'loc-xuanphuong', description: 'Tiếp nhận hồ sơ chứng thực', bookingEnabled: true },
+  { serviceId: 'svc-xuanphuong-2', serviceCode: 'B03', serviceName: 'Hỗ trợ cư trú', areaId: 'area-social', locationId: 'loc-xuanphuong', description: 'Tra cứu và hỗ trợ cư trú', bookingEnabled: true },
+  { serviceId: 'svc-namtuliem-1', serviceCode: 'A04', serviceName: 'Đăng ký hộ kinh doanh', areaId: 'area-business', locationId: 'loc-namtuliem', description: 'Tiếp nhận hồ sơ kinh doanh', bookingEnabled: true },
+  { serviceId: 'svc-eaktur-1', serviceCode: 'A05', serviceName: 'Xác nhận thông tin hộ tịch', areaId: 'area-justice', locationId: 'loc-eaktur', description: 'Xác nhận và cập nhật hộ tịch', bookingEnabled: true },
+  { serviceId: 'svc-hanoi-center-1', serviceCode: 'A06', serviceName: 'Tiếp nhận hồ sơ trực tuyến', areaId: 'area-other', locationId: 'loc-hanoi-center', description: 'Hỗ trợ nộp hồ sơ dịch vụ công', bookingEnabled: true },
+  { serviceId: 'svc-tanlap-1', serviceCode: 'A07', serviceName: 'Đăng ký khai sinh', areaId: 'area-justice', locationId: 'loc-tanlap', description: 'Tiếp nhận khai sinh tại xã', bookingEnabled: true },
+  { serviceId: 'svc-donganh-1', serviceCode: 'A08', serviceName: 'Trả kết quả hồ sơ', areaId: 'area-social', locationId: 'loc-donganh', description: 'Nhận và trả kết quả hành chính', bookingEnabled: true },
+  { serviceId: 'svc-daklak-center-1', serviceCode: 'A09', serviceName: 'Tiếp nhận hồ sơ cấp tỉnh', areaId: 'area-other', locationId: 'loc-daklak-center', description: 'Hướng dẫn thủ tục cấp tỉnh', bookingEnabled: true },
+  { serviceId: 'svc-hightech-1', serviceCode: 'A10', serviceName: 'Hỗ trợ doanh nghiệp công nghệ', areaId: 'area-business', locationId: 'loc-hightech', description: 'Tiếp nhận hồ sơ doanh nghiệp công nghệ', bookingEnabled: true },
+  { serviceId: 'svc-thuduc-long-1', serviceCode: 'A11', serviceName: 'Tiếp nhận liên thông thủ tục', areaId: 'area-other', locationId: 'loc-thuduc-long', description: 'Hỗ trợ hồ sơ liên thông nhiều cấp', bookingEnabled: true },
+  { serviceId: 'svc-baodai-1', serviceCode: 'A12', serviceName: 'Tiếp nhận lưu động', areaId: 'area-social', locationId: 'loc-baodai', description: 'Điểm tiếp nhận hồ sơ lưu động', bookingEnabled: true },
+];
 
 export type ZaloQmsArea = (typeof ZALO_QMS_AREAS)[number];
 export type ZaloQmsLocationArea = ZaloQmsArea & { readonly locationId: string };

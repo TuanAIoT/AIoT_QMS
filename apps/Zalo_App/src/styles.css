@@ -305,6 +305,10 @@ select {
   box-shadow: 0 16px 34px rgb(15 61 122 / 18%);
 }
 
+.screen-header-copy {
+  min-width: 0;
+}
+
 .back-button {
   flex: 0 0 auto;
   width: 44px;
@@ -318,8 +322,10 @@ select {
 
 .screen-header-copy h1 {
   margin: 0 0 6px;
-  font-size: clamp(1.7rem, 7vw, 2.3rem);
-  line-height: 1.05;
+  font-size: clamp(1.55rem, 6vw, 1.95rem);
+  line-height: 1.15;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .screen-header-copy p {
@@ -327,9 +333,14 @@ select {
   color: rgb(255 255 255 / 86%);
 }
 
-.context-card {
+.location-hero-copy {
   display: grid;
-  gap: 4px;
+  gap: 6px;
+}
+
+.location-hero-address {
+  font-size: 0.95rem;
+  line-height: 1.4;
 }
 
 .location-list,
@@ -341,6 +352,25 @@ select {
   gap: 12px;
   width: 100%;
   min-width: 0;
+}
+
+.queue-location-section {
+  display: grid;
+  gap: 12px;
+}
+
+.queue-location-list {
+  margin-top: 0;
+}
+
+.queue-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.queue-action-button {
+  margin-top: 0;
 }
 
 .location-card {
@@ -737,6 +767,10 @@ select {
   .hero-banner,
   .screen-header {
     padding: 16px;
+  }
+
+  .queue-action-row {
+    grid-template-columns: 1fr;
   }
 
   .hero-banner,
