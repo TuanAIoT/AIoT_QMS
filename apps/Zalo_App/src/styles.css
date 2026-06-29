@@ -104,9 +104,21 @@ select {
   box-shadow: 0 18px 40px rgb(0 104 255 / 22%);
 }
 
+.experiment-badge {
+  width: fit-content;
+  margin: 0 0 10px auto;
+  border-radius: 999px;
+  padding: 7px 11px;
+  color: #064390;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgb(29 55 87 / 10%);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .hero-banner h1 {
   margin: 6px 0;
-  font-size: clamp(2rem, 9vw, 3.2rem);
+  font-size: clamp(1.75rem, 7vw, 2.45rem);
   line-height: 1.02;
 }
 
@@ -146,12 +158,19 @@ select {
 .menu-card {
   display: grid;
   gap: 8px;
-  min-height: 124px;
+  min-height: 116px;
   padding: 16px;
   text-align: left;
   color: #102033;
   background: #ffffff;
   box-shadow: 0 12px 34px rgb(29 55 87 / 10%);
+}
+
+.menu-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .menu-card strong {
@@ -165,6 +184,7 @@ select {
 }
 
 .menu-card-icon {
+  flex: 0 0 auto;
   width: 38px;
   height: 38px;
   display: inline-grid;
@@ -172,8 +192,37 @@ select {
   border-radius: 12px;
   color: #ffffff;
   background: linear-gradient(135deg, #0068ff, #00a3ff);
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 800;
+}
+
+.contact-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.contact-copy {
+  min-width: 0;
+}
+
+.contact-card a {
+  overflow-wrap: anywhere;
+}
+
+.plain-contact-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.company-logo {
+  display: block;
+  width: 76px;
+  max-width: 100%;
+  height: auto;
+  border-radius: 18px;
 }
 
 .section-block {
@@ -338,7 +387,7 @@ select {
 
 .date-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(76px, 1fr));
+  grid-template-columns: repeat(7, minmax(82px, 1fr));
   gap: 8px;
   width: 100%;
   max-width: 100%;
@@ -437,6 +486,49 @@ select {
 .service-state {
   color: #0068ff;
   font-weight: 700;
+}
+
+.history-ticket-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 14px;
+  border-radius: 24px;
+  padding: 18px;
+  background: #ffffff;
+  box-shadow: 0 12px 34px rgb(29 55 87 / 10%);
+}
+
+.history-ticket-card.current {
+  border: 2px solid #9fc8ff;
+}
+
+.history-ticket-card > strong {
+  font-size: 1.35rem;
+}
+
+.history-ticket-card dl {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+}
+
+.history-ticket-card dl div {
+  display: grid;
+  grid-template-columns: minmax(86px, auto) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.history-ticket-card dt {
+  color: #6c7a90;
+}
+
+.history-ticket-card dd {
+  min-width: 0;
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .primary-button,
@@ -588,6 +680,27 @@ select {
 .waiting-card {
   display: grid;
   gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.queue-toggle {
+  width: 100%;
+  margin-top: 8px;
+  color: #0068ff;
+  background: #eaf3ff;
+}
+
+.counter-waiting-list {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid #e4ebf5;
+  padding-top: 12px;
+}
+
+.my-ticket {
+  color: #c1121f;
+  font-weight: 900;
 }
 
 .placeholder-card,
@@ -638,6 +751,15 @@ select {
 
   .menu-grid {
     grid-template-columns: 1fr;
+  }
+
+  .contact-card {
+    grid-template-columns: minmax(0, 1fr) 64px;
+    gap: 10px;
+  }
+
+  .company-logo {
+    width: 64px;
   }
 
   .service-card,

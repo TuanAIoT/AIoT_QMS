@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createMockZaloQmsServer, type MockZaloQmsServer } from '../src/index.js';
+import { MockZaloQmsState } from '../src/state.js';
 
 let server: MockZaloQmsServer;
 let baseUrl: string;
@@ -60,7 +61,31 @@ describe('mock zalo qms server', () => {
     expect(created.body.data.fullName).toBe('Nguyễn Văn A');
     expect(current.body.data).not.toBeNull();
     expect(history.body.data.length).toBeGreaterThanOrEqual(1);
-    expect(queue.body.data.counters.length).toBe(3);
+    expect(queue.body.data.counters.length).toBe(4);
+  });
+
+  it('queues a booking at the matching service and never exposes PII in queue status', async () => {
+    await request('/api/zalo/bookings', {
+      method: 'POST',
+      body: JSON.stringify({ locationId: 'loc-cumta', areaId: 'area-social', serviceId: 'svc-social-1', fullName: 'Người dùng thử', bookingDate: '2026-06-27' }),
+    });
+    const queue = await request<{ readonly data: { readonly counters: readonly { readonly serviceId: string; readonly waitingCount: number }[] } }>('/api/zalo/locations/loc-cumta/queue-status');
+    expect(queue.body.data.counters.find((counter) => counter.serviceId === 'svc-social-1')?.waitingCount).toBe(1);
+    expect(JSON.stringify(queue.body)).not.toContain('Người dùng thử');
+    expect(JSON.stringify(queue.body)).not.toContain('fullName');
+    expect(JSON.stringify(queue.body)).not.toContain('qrPayload');
+  });
+
+  it('ticks deterministically to call and then complete the current ticket', () => {
+    const state = new MockZaloQmsState();
+    const ticket = state.createBooking('loc-cumta', 'area-justice', 'svc-justice-1', 'Người dùng thử', '2026-06-27');
+    state.tickQueueSimulation('loc-cumta');
+    expect(state.getTicket(ticket.ticketId).status).toBe('SERVING');
+    expect(state.getQueueStatus('loc-cumta').counters.find((counter) => counter.serviceId === 'svc-justice-1')?.currentTicket?.ticketId).toBe(ticket.ticketId);
+    state.tickQueueSimulation('loc-cumta');
+    expect(state.getTicket(ticket.ticketId).status).toBe('COMPLETED');
+    expect(state.getCurrentBooking('loc-cumta')).toBeNull();
+    expect(state.listHistory('loc-cumta').some((item) => item.ticketId === ticket.ticketId)).toBe(true);
   });
 
   it('rejects mismatched service and keeps CORS enabled', async () => {

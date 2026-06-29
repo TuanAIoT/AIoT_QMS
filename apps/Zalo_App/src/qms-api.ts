@@ -44,19 +44,27 @@ export interface QmsTicketDto {
 export interface QmsCounterDto {
   readonly counterId: string;
   readonly counterName: string;
+  readonly serviceId: string;
+  readonly serviceName: string;
   readonly status: 'OPEN' | 'CLOSED';
-  readonly currentTicketNumber: string | null;
-  readonly servingServiceName: string | null;
+  readonly currentTicket: QmsQueueTicketDto | null;
+  readonly nextTicket: QmsQueueTicketDto | null;
+  readonly waitingCount: number;
+  readonly waitingTickets: readonly QmsQueueTicketDto[];
   readonly updatedAt: string;
+}
+
+export interface QmsQueueTicketDto {
+  readonly ticketId: string;
+  readonly ticketNumber: string;
+  readonly serviceName: string;
 }
 
 export interface QmsQueueStatusDto {
   readonly locationId: string;
   readonly locationName: string;
-  readonly bookingEnabled: boolean;
-  readonly currentDate: string;
+  readonly updatedAt: string;
   readonly counters: readonly QmsCounterDto[];
-  readonly waitingTickets: readonly QmsTicketDto[];
 }
 
 export type QmsLocation = QmsLocationDto;
@@ -249,14 +257,26 @@ function parseTicket(value: unknown): QmsTicketDto {
   };
 }
 
+function parseQueueTicket(value: unknown): QmsQueueTicketDto {
+  if (!isRecord(value) || !hasText(value.ticketId) || !hasText(value.ticketNumber) || !hasText(value.serviceName)) {
+    throw new QmsApiError('INVALID_RESPONSE', 'Dữ liệu số thứ tự không hợp lệ.');
+  }
+  return { ticketId: value.ticketId, ticketNumber: value.ticketNumber, serviceName: value.serviceName };
+}
+
 function parseCounter(value: unknown): QmsCounterDto {
   if (
     !isRecord(value) ||
     !hasText(value.counterId) ||
     !hasText(value.counterName) ||
+    !hasText(value.serviceId) ||
+    !hasText(value.serviceName) ||
     (value.status !== 'OPEN' && value.status !== 'CLOSED') ||
-    (value.currentTicketNumber !== null && !hasText(value.currentTicketNumber)) ||
-    (value.servingServiceName !== null && !hasText(value.servingServiceName)) ||
+    (value.currentTicket !== null && !isRecord(value.currentTicket)) ||
+    (value.nextTicket !== null && !isRecord(value.nextTicket)) ||
+    typeof value.waitingCount !== 'number' ||
+    value.waitingCount < 0 ||
+    !Array.isArray(value.waitingTickets) ||
     !hasText(value.updatedAt)
   ) {
     throw new QmsApiError('INVALID_RESPONSE', 'Dữ liệu quầy không hợp lệ.');
@@ -264,9 +284,13 @@ function parseCounter(value: unknown): QmsCounterDto {
   return {
     counterId: value.counterId,
     counterName: value.counterName,
+    serviceId: value.serviceId,
+    serviceName: value.serviceName,
     status: value.status,
-    currentTicketNumber: value.currentTicketNumber ?? null,
-    servingServiceName: value.servingServiceName ?? null,
+    currentTicket: value.currentTicket === null ? null : parseQueueTicket(value.currentTicket),
+    nextTicket: value.nextTicket === null ? null : parseQueueTicket(value.nextTicket),
+    waitingCount: value.waitingCount,
+    waitingTickets: value.waitingTickets.map(parseQueueTicket),
     updatedAt: value.updatedAt,
   };
 }
@@ -276,20 +300,16 @@ function parseQueueStatus(value: unknown): QmsQueueStatusDto {
     !isRecord(value) ||
     !hasText(value.locationId) ||
     !hasText(value.locationName) ||
-    typeof value.bookingEnabled !== 'boolean' ||
-    !hasText(value.currentDate) ||
-    !Array.isArray(value.counters) ||
-    !Array.isArray(value.waitingTickets)
+    !hasText(value.updatedAt) ||
+    !Array.isArray(value.counters)
   ) {
     throw new QmsApiError('INVALID_RESPONSE', 'Dữ liệu tình hình số thứ tự không hợp lệ.');
   }
   return {
     locationId: value.locationId,
     locationName: value.locationName,
-    bookingEnabled: value.bookingEnabled,
-    currentDate: value.currentDate,
+    updatedAt: value.updatedAt,
     counters: value.counters.map((counter) => parseCounter(counter)),
-    waitingTickets: value.waitingTickets.map((ticket) => parseTicket(ticket)),
   };
 }
 

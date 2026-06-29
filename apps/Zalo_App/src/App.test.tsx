@@ -55,19 +55,21 @@ function createQueueStatus(): QmsQueueStatusDto {
   return {
     locationId: 'loc-001',
     locationName: LOCATIONS[0]!.locationName,
-    bookingEnabled: true,
-    currentDate: '2026-06-26T00:10:00.000Z',
+    updatedAt: '2026-06-26T00:10:00.000Z',
     counters: [
       {
         counterId: 'counter-01',
         counterName: 'Quầy 01',
+        serviceId: 'svc-justice-1',
+        serviceName: 'Khai sinh, khai tử',
         status: 'OPEN',
-        currentTicketNumber: '0001',
-        servingServiceName: 'Khai sinh, khai tử',
+        currentTicket: null,
+        nextTicket: { ticketId: 'ticket-demo-001', ticketNumber: '0001', serviceName: 'Khai sinh, khai tử' },
+        waitingCount: 1,
+        waitingTickets: [{ ticketId: 'ticket-demo-001', ticketNumber: '0001', serviceName: 'Khai sinh, khai tử' }],
         updatedAt: '2026-06-26T00:10:00.000Z',
       },
     ],
-    waitingTickets: [createTicket()],
   };
 }
 
@@ -118,7 +120,13 @@ describe('Zalo App booking flow', () => {
     expect(screen.getByRole('button', { name: /Đặt số trực tuyến/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Số đã đặt/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Tình hình số thứ tự/ })).toBeTruthy();
-    expect(screen.getByRole('link', { name: /Website:/ }).getAttribute('href')).toBe('https://aiots.vn');
+    expect(screen.getAllByText('AIoT JSC QMS')).toHaveLength(1);
+    expect(screen.getByText('Ứng dụng đặt số và tra cứu online')).toBeTruthy();
+    expect(screen.getByText('Chế độ thử nghiệm').className).toContain('experiment-badge');
+    expect(screen.getByRole('link', { name: 'https://aiots.vn' }).getAttribute('href')).toBe('https://aiots.vn');
+    expect(screen.getByRole('link', { name: 'aiot@aiots.vn' }).className).toContain('plain-contact-link');
+    expect(screen.getByRole('img', { name: 'Logo AIoT' })).toBeTruthy();
+    expect(document.querySelectorAll('.menu-card-heading .menu-card-icon')).toHaveLength(3);
     await waitFor(() => expect(api.getLocations).toHaveBeenCalledTimes(1));
   });
 
@@ -169,6 +177,8 @@ describe('Zalo App booking flow', () => {
     expect(await screen.findByRole('heading', { name: /Phiếu đăng ký/ })).toBeTruthy();
     expect(await screen.findByRole('img', { name: 'Mã QR của phiếu' })).toBeTruthy();
     expect(screen.getByText('#0002')).toBeTruthy();
+    expect(screen.queryByText('Nguyễn Văn A')).toBeNull();
+    expect(screen.queryByText('Họ và tên')).toBeNull();
   });
 
   it('shows current booking and history', async () => {
@@ -178,6 +188,10 @@ describe('Zalo App booking flow', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Số đã đặt/ }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Lịch sử đặt số' })).toBeTruthy();
     expect(screen.getAllByText('#0001')).toHaveLength(2);
+    expect(screen.getAllByText(LOCATIONS[0]!.locationName)).toHaveLength(2);
+    expect(screen.getAllByText('2026-06-27')).toHaveLength(2);
+    expect(screen.queryByText('Nguyễn Văn A')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Xem chi tiết / QR' })).toBeTruthy();
   });
 
   it('shows queue status and waiting tickets', async () => {
@@ -186,6 +200,36 @@ describe('Zalo App booking flow', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Tình hình số thứ tự/ }));
     expect(await screen.findByText('Tình hình số thứ tự')).toBeTruthy();
+    expect(await screen.findByText(/Quầy 01 - Khai sinh/)).toBeTruthy();
+    expect(screen.getByText('Số đang chờ: 1')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Danh sách chờ' }));
+    expect(screen.getAllByText(/Phiếu của bạn/).every((item) => item.className.includes('my-ticket'))).toBe(true);
+    expect(document.body.textContent).not.toContain('Nguyễn Văn A');
+  });
+
+  it('requires location selection when there is no active booking', async () => {
+    const api = createApi({ getCurrentBooking: vi.fn(async () => null) });
+    renderApp(api);
+    fireEvent.click(await screen.findByRole('button', { name: /Tình hình số thứ tự/ }));
+    expect(await screen.findByText('Chọn đơn vị để xem tình hình số thứ tự.')).toBeTruthy();
+    expect(api.getQueueStatus).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(LOCATIONS[0]!.locationName) }));
+    await waitFor(() => expect(api.getQueueStatus).toHaveBeenCalledTimes(1));
+  });
+
+  it('prevents duplicate queue refresh requests', async () => {
+    let resolveQueue: ((status: QmsQueueStatusDto) => void) | undefined;
+    const getQueueStatus = vi.fn(() => new Promise<QmsQueueStatusDto>((resolve) => { resolveQueue = resolve; }));
+    const api = createApi({ getQueueStatus });
+    renderApp(api);
+    fireEvent.click(await screen.findByRole('button', { name: /Tình hình số thứ tự/ }));
+    await waitFor(() => expect(getQueueStatus).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Đang làm mới...' }).hasAttribute('disabled')).toBe(true);
+    resolveQueue?.(createQueueStatus());
+    await screen.findByRole('button', { name: 'Làm mới' });
+    fireEvent.click(screen.getByRole('button', { name: 'Làm mới' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Đang làm mới...' }));
+    expect(getQueueStatus).toHaveBeenCalledTimes(2);
   });
 
   it('rejects malformed schema without confusing it with network failure', async () => {
@@ -204,9 +248,13 @@ describe('Zalo App booking flow', () => {
     await openBookingForm();
 
     const dateButtons = screen.getAllByRole('button').filter((button) => button.classList.contains('date-chip'));
-    const yesterday = dateButtons.find((button) => button.hasAttribute('disabled'));
-    expect(yesterday).toBeTruthy();
-    const futureDate = dateButtons.find((button) => !button.hasAttribute('disabled') && button.getAttribute('aria-pressed') === 'false');
+    expect(dateButtons).toHaveLength(7);
+    expect(dateButtons.every((button) => !button.hasAttribute('disabled'))).toBe(true);
+    const today = new Date();
+    const todayValue = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'), String(today.getDate()).padStart(2, '0')].join('-');
+    expect(dateButtons[0]?.getAttribute('data-date')).toBe(todayValue);
+    expect(dateButtons.every((button) => (button.getAttribute('data-date') ?? '') >= todayValue)).toBe(true);
+    const futureDate = dateButtons.find((button) => button.getAttribute('aria-pressed') === 'false');
     expect(futureDate).toBeTruthy();
     fireEvent.click(futureDate!);
     await waitFor(() => expect(futureDate?.getAttribute('aria-pressed')).toBe('true'));
@@ -286,6 +334,18 @@ describe('Zalo App booking flow', () => {
     await waitFor(() => expect(areaButton.classList.contains('selected')).toBe(true));
     expect(areaButton.getAttribute('aria-pressed')).toBe('true');
     expect(api.getServices).toHaveBeenCalledWith('loc-001', 'area-justice', expect.any(AbortSignal));
+  });
+
+  it('selects and clears a service from the whole card', async () => {
+    renderApp();
+    await openBookingForm();
+    const service = screen.getByRole('button', { name: new RegExp(SERVICES[0]!.serviceName) });
+    expect(service.getAttribute('aria-pressed')).toBe('true');
+    expect(service.textContent).toContain('Bỏ chọn');
+    fireEvent.click(service);
+    expect(service.getAttribute('aria-pressed')).toBe('false');
+    expect(service.textContent).toContain('Chọn');
+    expect(screen.getByRole('button', { name: 'Xác nhận đặt số' }).hasAttribute('disabled')).toBe(true);
   });
 
   it('hides non-blocking runtime banners in a valid Zalo runtime', async () => {

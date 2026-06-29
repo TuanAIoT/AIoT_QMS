@@ -8,6 +8,7 @@ export type {
   ZaloQmsCounterStatus,
   ZaloQmsLocation,
   ZaloQmsQueueStatus,
+  ZaloQmsQueueTicket,
   ZaloQmsService,
   ZaloQmsTicket,
   ZaloQmsTicketStatus,

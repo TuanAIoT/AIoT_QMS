@@ -17,6 +17,18 @@ const corsOrigins = (process.env.MOCK_ZALO_QMS_CORS_ORIGIN ??
 const server = createMockZaloQmsServer({ corsOrigins });
 const host = process.env.MOCK_ZALO_QMS_HOST ?? '127.0.0.1';
 const port = parsePort(process.env.MOCK_ZALO_QMS_PORT);
+const simulationIntervalMs = Number(process.env.MOCK_ZALO_QMS_TICK_MS ?? '15000');
+const simulationTimer = Number.isFinite(simulationIntervalMs) && simulationIntervalMs > 0
+  ? setInterval(() => server.state.tickQueueSimulation(), simulationIntervalMs)
+  : null;
+simulationTimer?.unref();
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    if (simulationTimer !== null) clearInterval(simulationTimer);
+    void server.close().finally(() => process.exit(0));
+  });
+}
 
 server
   .listen(port, host)

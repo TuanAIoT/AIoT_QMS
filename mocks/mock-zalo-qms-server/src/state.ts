@@ -58,19 +58,27 @@ export interface ZaloQmsTicket {
 export interface ZaloQmsCounter {
   readonly counterId: string;
   readonly counterName: string;
+  readonly serviceId: string;
+  readonly serviceName: string;
   readonly status: ZaloQmsCounterStatus;
-  readonly currentTicketNumber: string | null;
-  readonly servingServiceName: string | null;
+  readonly currentTicket: ZaloQmsQueueTicket | null;
+  readonly nextTicket: ZaloQmsQueueTicket | null;
+  readonly waitingCount: number;
+  readonly waitingTickets: readonly ZaloQmsQueueTicket[];
   readonly updatedAt: string;
+}
+
+export interface ZaloQmsQueueTicket {
+  readonly ticketId: string;
+  readonly ticketNumber: string;
+  readonly serviceName: string;
 }
 
 export interface ZaloQmsQueueStatus {
   readonly locationId: string;
   readonly locationName: string;
-  readonly bookingEnabled: boolean;
-  readonly currentDate: string;
+  readonly updatedAt: string;
   readonly counters: readonly ZaloQmsCounter[];
-  readonly waitingTickets: readonly ZaloQmsTicket[];
 }
 
 export class MockZaloQmsError extends Error {
@@ -121,18 +129,25 @@ function locationById(locationId: string): ZaloQmsLocation {
 interface StoredCounter {
   counterId: string;
   counterName: string;
+  locationId: string;
+  serviceId: string;
+  serviceName: string;
   status: ZaloQmsCounterStatus;
-  currentTicketNumber: string | null;
-  servingServiceName: string | null;
+  currentTicketId: string | null;
   updatedAt: string;
 }
 
-function createCounters(): StoredCounter[] {
-  return [
-    { counterId: 'counter-01', counterName: 'Quầy 01', status: 'OPEN', currentTicketNumber: null, servingServiceName: null, updatedAt: toIso() },
-    { counterId: 'counter-02', counterName: 'Quầy 02', status: 'OPEN', currentTicketNumber: null, servingServiceName: null, updatedAt: toIso() },
-    { counterId: 'counter-03', counterName: 'Quầy 03', status: 'OPEN', currentTicketNumber: null, servingServiceName: null, updatedAt: toIso() },
-  ];
+function createLocationCounters(locationId: string): StoredCounter[] {
+  return ZALO_QMS_SERVICES.filter((service) => service.locationId === locationId).map((service, index) => ({
+    counterId: `${locationId}-counter-${String(index + 1).padStart(2, '0')}`,
+    counterName: `Quầy ${String(index + 1).padStart(2, '0')}`,
+    locationId,
+    serviceId: service.serviceId,
+    serviceName: service.serviceName,
+    status: 'OPEN',
+    currentTicketId: null,
+    updatedAt: toIso(),
+  }));
 }
 
 export class MockZaloQmsState {
@@ -147,7 +162,7 @@ export class MockZaloQmsState {
   reset(): void {
     this.tickets = [];
     this.counters = new Map(ZALO_QMS_LOCATIONS.map((location) => [location.locationId, 0]));
-    this.countersByLocation = new Map(ZALO_QMS_LOCATIONS.map((location) => [location.locationId, createCounters()]));
+    this.countersByLocation = new Map(ZALO_QMS_LOCATIONS.map((location) => [location.locationId, createLocationCounters(location.locationId)]));
   }
 
   listLocations(): readonly ZaloQmsLocation[] {
@@ -246,36 +261,67 @@ export class MockZaloQmsState {
 
   getQueueStatus(locationId: string): ZaloQmsQueueStatus {
     const location = locationById(locationId);
+    const counters = this.countersByLocation.get(locationId) ?? [];
     return {
       locationId: location.locationId,
       locationName: location.locationName,
-      bookingEnabled: true,
-      currentDate: toIso(),
-      counters: this.countersByLocation.get(locationId)?.map((counter) => ({ ...counter })) ?? createCounters(),
-      waitingTickets: this.tickets
-        .filter((ticket) => ticket.locationId === locationId && ticket.status === 'WAITING')
-        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-        .map((ticket) => this.toPublicTicket(ticket)),
+      updatedAt: toIso(),
+      counters: counters.map((counter) => {
+        const waiting = this.tickets
+          .filter((ticket) => ticket.locationId === locationId && ticket.serviceId === counter.serviceId && ticket.status === 'WAITING')
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+        const current = counter.currentTicketId === null ? undefined : this.tickets.find((ticket) => ticket.ticketId === counter.currentTicketId);
+        return {
+          counterId: counter.counterId,
+          counterName: counter.counterName,
+          serviceId: counter.serviceId,
+          serviceName: counter.serviceName,
+          status: counter.status,
+          currentTicket: current === undefined ? null : this.toQueueTicket(current),
+          nextTicket: waiting[0] === undefined ? null : this.toQueueTicket(waiting[0]),
+          waitingCount: waiting.length,
+          waitingTickets: waiting.slice(0, 20).map((ticket) => this.toQueueTicket(ticket)),
+          updatedAt: counter.updatedAt,
+        };
+      }),
     };
   }
 
   callNext(locationId?: string): ZaloQmsTicket | null {
-    const ticket = this.tickets.find((candidate) => candidate.status === 'WAITING' && (locationId === undefined ? true : candidate.locationId === locationId));
-    if (ticket === undefined) {
-      return null;
-    }
-    ticket.status = 'CALLED';
-    ticket.updatedAt = toIso();
-    const counters = this.countersByLocation.get(ticket.locationId);
-    if (counters !== undefined) {
-      const counter = counters.find((candidate) => candidate.status === 'OPEN') ?? counters[0];
-      if (counter !== undefined) {
-        counter.currentTicketNumber = ticket.ticketNumber;
-        counter.servingServiceName = ticket.serviceName;
-        counter.updatedAt = toIso();
+    return this.tickQueueSimulation(locationId)[0] ?? null;
+  }
+
+  tickQueueSimulation(locationId?: string): readonly ZaloQmsTicket[] {
+    const changed: ZaloQmsTicket[] = [];
+    const counters = [...this.countersByLocation.values()].flat().filter((counter) =>
+      locationId === undefined ? true : counter.locationId === locationId,
+    );
+    for (const counter of counters) {
+      if (counter.status !== 'OPEN') continue;
+      if (counter.currentTicketId !== null) {
+        const current = this.tickets.find((ticket) => ticket.ticketId === counter.currentTicketId);
+        if (current !== undefined) {
+          current.status = 'COMPLETED';
+          current.canCancel = false;
+          current.updatedAt = toIso();
+          changed.push(this.toPublicTicket(current));
+        }
+        counter.currentTicketId = null;
+      } else {
+        const next = this.tickets.find((ticket) =>
+          ticket.locationId === counter.locationId && ticket.serviceId === counter.serviceId && ticket.status === 'WAITING',
+        );
+        if (next !== undefined) {
+          next.status = 'SERVING';
+          next.canCancel = false;
+          next.updatedAt = toIso();
+          counter.currentTicketId = next.ticketId;
+          changed.push(this.toPublicTicket(next));
+        }
       }
+      counter.updatedAt = toIso();
     }
-    return this.toPublicTicket(ticket);
+    return changed;
   }
 
   private findTicket(ticketId: string): StoredTicket {
@@ -291,12 +337,15 @@ export class MockZaloQmsState {
     if (counters === undefined) {
       return;
     }
-    const counter = counters.find((candidate) => candidate.currentTicketNumber === ticket.ticketNumber);
+    const counter = counters.find((candidate) => candidate.currentTicketId === ticket.ticketId);
     if (counter !== undefined) {
-      counter.currentTicketNumber = null;
-      counter.servingServiceName = null;
+      counter.currentTicketId = null;
       counter.updatedAt = toIso();
     }
+  }
+
+  private toQueueTicket(ticket: StoredTicket): ZaloQmsQueueTicket {
+    return { ticketId: ticket.ticketId, ticketNumber: ticket.ticketNumber, serviceName: ticket.serviceName };
   }
 
   private toPublicTicket(ticket: StoredTicket): ZaloQmsTicket {

@@ -15,7 +15,7 @@ import { getRuntimeConfig, initializeZaloRuntime, type ZaloRuntimeState } from '
 import './styles.css';
 
 export const APP_NAME = 'AIoT JSC QMS';
-export const APP_SUBTITLE = 'Ứng dụng đặt số và tra cứu hàng chờ';
+export const APP_SUBTITLE = 'Ứng dụng đặt số và tra cứu online';
 export const ORGANIZATION_NAME = 'Công ty Cổ phần hệ thống AIoT';
 export const ORGANIZATION_WEBSITE = 'https://aiots.vn';
 export const ORGANIZATION_EMAIL = 'aiot@aiots.vn';
@@ -109,38 +109,28 @@ function mapApiError(error: unknown, retryTarget: RetryTarget): UiError {
 function HomeBanner({ onGoBooking, onGoHistory, onGoQueue }: { readonly onGoBooking: () => void; readonly onGoHistory: () => void; readonly onGoQueue: () => void; }) {
   return (
     <section className="home-screen">
+      <div className="experiment-badge">Chế độ thử nghiệm</div>
       <header className="hero-banner">
         <div>
-          <p className="hero-kicker">AIoT JSC QMS</p>
           <h1>{APP_NAME}</h1>
           <p className="hero-subtitle">{APP_SUBTITLE}</p>
         </div>
-        <span className="brand-chip">Chế độ thử nghiệm</span>
       </header>
       <section className="menu-grid">
-        <button type="button" className="menu-card" onClick={onGoBooking}><span aria-hidden="true">📅</span><strong>Đặt số trực tuyến</strong><span>Chọn đơn vị và lĩnh vực</span></button>
-        <button type="button" className="menu-card" onClick={onGoHistory}><span aria-hidden="true">📘</span><strong>Số đã đặt</strong><span>Xem phiếu đang hoạt động</span></button>
-        <button type="button" className="menu-card" onClick={onGoQueue}><span aria-hidden="true">🌐</span><strong>Tình hình số thứ tự</strong><span>Theo dõi quầy và số chờ</span></button>
+        <button type="button" className="menu-card" onClick={onGoBooking}><span className="menu-card-heading"><span className="menu-card-icon" aria-hidden="true">📅</span><strong>Đặt số trực tuyến</strong></span><span>Chọn đơn vị và lĩnh vực</span></button>
+        <button type="button" className="menu-card" onClick={onGoHistory}><span className="menu-card-heading"><span className="menu-card-icon" aria-hidden="true">📘</span><strong>Số đã đặt</strong></span><span>Xem phiếu đang hoạt động</span></button>
+        <button type="button" className="menu-card" onClick={onGoQueue}><span className="menu-card-heading"><span className="menu-card-icon" aria-hidden="true">🌐</span><strong>Tình hình số thứ tự</strong></span><span>Theo dõi quầy và số chờ</span></button>
       </section>
       <section className="section-block">
         <article className="contact-card">
-          <strong>{ORGANIZATION_NAME}</strong>
-          <p>
-            <a href={ORGANIZATION_WEBSITE} target="_blank" rel="noreferrer">Website: {ORGANIZATION_WEBSITE}</a>
-          </p>
-          <p>
-            <a href={`mailto:${ORGANIZATION_EMAIL}`}>Email: {ORGANIZATION_EMAIL}</a>
-          </p>
-          <p>
-            Hotline/Zalo:{' '}
-            {ORGANIZATION_HOTLINES.map((phone, index) => (
-              <span key={phone}>
-                {index > 0 ? ' | ' : ''}
-                <a href={`tel:${phone.replace(/\s+/g, '')}`}>{phone}</a>
-              </span>
-            ))}
-          </p>
-          <p>{ORGANIZATION_ADDRESS}</p>
+          <div className="contact-copy">
+            <strong>{ORGANIZATION_NAME}</strong>
+            <p>Website: <a href={ORGANIZATION_WEBSITE} target="_blank" rel="noreferrer">{ORGANIZATION_WEBSITE}</a></p>
+            <p>Email: <a className="plain-contact-link" href={`mailto:${ORGANIZATION_EMAIL}`}>{ORGANIZATION_EMAIL}</a></p>
+            <p>Hotline/Zalo:{' '}{ORGANIZATION_HOTLINES.map((phone, index) => <span key={phone}>{index > 0 ? ' | ' : ''}<a className="plain-contact-link" href={`tel:${phone.replace(/\s+/g, '')}`}>{phone}</a></span>)}</p>
+            <p>{ORGANIZATION_ADDRESS}</p>
+          </div>
+          <img className="company-logo" src="/aiot-logo-placeholder.svg" alt="Logo AIoT" />
         </article>
       </section>
     </section>
@@ -249,9 +239,9 @@ function BookingScreen({
   readonly onRetry: () => void;
 }) {
   const today = new Date();
-  const dateChoices = Array.from({ length: 5 }, (_, index) => {
+  const dateChoices = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(today);
-    date.setDate(today.getDate() + index - 1);
+    date.setDate(today.getDate() + index);
     return date;
   });
 
@@ -274,16 +264,15 @@ function BookingScreen({
       <section className="section-block">
         <SectionTitle title="Bảng lịch ngày" />
         <div className="date-strip">
-          {dateChoices.map((date, index) => {
+          {dateChoices.map((date) => {
             const value = toLocalDateValue(date);
-            const isPast = index === 0;
             const label = new Intl.DateTimeFormat('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(date);
             return (
               <button
                 key={value}
                 type="button"
                 className={`date-chip ${bookingDate === value ? 'selected' : ''}`}
-                disabled={isPast}
+                data-date={value}
                 onClick={() => onBookingDateChange(value)}
                 aria-pressed={bookingDate === value}
               >
@@ -323,12 +312,13 @@ function BookingScreen({
         {!loadingService && serviceError === null && hasText(selectedAreaId) && services.length === 0 ? <p className="empty-inline">Chưa có dịch vụ khả dụng.</p> : null}
         <div className="service-list">
           {services.map((service) => (
-            <button key={service.id} type="button" className={`service-card ${selectedServiceId === service.id ? 'selected' : ''}`} onClick={() => onSelectService(service.id)}>
+            <button key={service.id} type="button" className={`service-card ${selectedServiceId === service.id ? 'selected' : ''}`} onClick={() => onSelectService(selectedServiceId === service.id ? '' : service.id)} aria-pressed={selectedServiceId === service.id}>
               <span className="service-code">{service.code}</span>
               <span className="service-copy">
                 <strong>{service.name}</strong>
                 <span>{service.description ?? 'Dịch vụ mô phỏng'}</span>
               </span>
+              <span className="service-state">{selectedServiceId === service.id ? 'Bỏ chọn' : 'Chọn'}</span>
             </button>
           ))}
         </div>
@@ -393,7 +383,6 @@ export function BookingDetailScreen({
           <div><dt>Đơn vị</dt><dd>{booking.locationName}</dd></div>
           <div><dt>Lĩnh vực</dt><dd>{booking.areaName}</dd></div>
           <div><dt>Dịch vụ</dt><dd>{booking.serviceName}</dd></div>
-          <div><dt>Họ và tên</dt><dd>{booking.fullName}</dd></div>
           <div><dt>Ngày đăng ký</dt><dd>{booking.bookingDate}</dd></div>
           <div><dt>Thời gian tạo</dt><dd>{formatDateTime(booking.createdAt)}</dd></div>
           <div><dt>Trạng thái</dt><dd>{booking.status}</dd></div>
@@ -414,11 +403,13 @@ function HistoryScreen({
   history,
   loading,
   onBack,
+  onViewCurrent,
 }: {
   readonly currentBooking: QmsTicketDto | null;
   readonly history: readonly QmsTicketDto[];
   readonly loading: boolean;
   readonly onBack: () => void;
+  readonly onViewCurrent: () => void;
 }) {
   return (
     <section className="flow-screen">
@@ -437,23 +428,40 @@ function HistoryScreen({
           <p>Hãy tạo một lượt đặt mới để hiển thị phiếu hiện tại.</p>
         </section>
       ) : (
-        <article className="ticket-card">
+        <article className="history-ticket-card current">
           <strong>#{currentBooking.ticketNumber}</strong>
-          <span>{currentBooking.locationName}</span>
-          <span>{currentBooking.areaName}</span>
-          <span>{currentBooking.serviceName}</span>
-          <span>{currentBooking.fullName}</span>
+          <dl>
+            <div><dt>Đơn vị</dt><dd>{currentBooking.locationName}</dd></div>
+            <div><dt>Lĩnh vực</dt><dd>{currentBooking.areaName}</dd></div>
+            <div><dt>Dịch vụ</dt><dd>{currentBooking.serviceName}</dd></div>
+            <div><dt>Ngày đặt</dt><dd>{currentBooking.bookingDate}</dd></div>
+            <div><dt>Trạng thái</dt><dd>{currentBooking.status}</dd></div>
+          </dl>
+          <button type="button" className="secondary-button" onClick={onViewCurrent}>Xem chi tiết / QR</button>
         </article>
       )}
       <section className="section-block">
         <SectionTitle title="Lịch sử đặt số" subtitle="Các phiếu trước" />
-        {history.length === 0 ? <p>Chưa có lịch sử.</p> : history.map((ticket) => <article key={ticket.ticketId} className="ticket-card"><strong>#{ticket.ticketNumber}</strong><span>{ticket.serviceName}</span><span>{ticket.status}</span></article>)}
+        {history.length === 0 ? <article className="empty-card"><p>Chưa có lịch sử đặt số.</p></article> : history.map((ticket) => (
+          <article key={ticket.ticketId} className="history-ticket-card">
+            <strong>#{ticket.ticketNumber}</strong>
+            <dl>
+              <div><dt>Đơn vị</dt><dd>{ticket.locationName}</dd></div>
+              <div><dt>Lĩnh vực</dt><dd>{ticket.areaName}</dd></div>
+              <div><dt>Dịch vụ</dt><dd>{ticket.serviceName}</dd></div>
+              <div><dt>Ngày đặt</dt><dd>{ticket.bookingDate}</dd></div>
+              <div><dt>Trạng thái</dt><dd>{ticket.status}</dd></div>
+            </dl>
+          </article>
+        ))}
       </section>
     </section>
   );
 }
 
-function QueueScreen({ location, queueStatus, loading, onBack, onRefresh }: { readonly location: LocationModel | null; readonly queueStatus: QmsQueueStatusDto | null; readonly loading: boolean; readonly onBack: () => void; readonly onRefresh: () => void; }) {
+function QueueScreen({ locations, location, queueStatus, currentTicketId, loading, onBack, onSelectLocation, onRefresh }: { readonly locations: readonly LocationModel[]; readonly location: LocationModel | null; readonly queueStatus: QmsQueueStatusDto | null; readonly currentTicketId: string | null; readonly loading: boolean; readonly onBack: () => void; readonly onSelectLocation: (location: LocationModel) => void; readonly onRefresh: () => void; }) {
+  const [expandedCounters, setExpandedCounters] = useState<ReadonlySet<string>>(() => new Set());
+  const isMine = (ticketId: string): boolean => ticketId === currentTicketId;
   return (
     <section className="flow-screen">
       <header className="screen-header">
@@ -464,29 +472,42 @@ function QueueScreen({ location, queueStatus, loading, onBack, onRefresh }: { re
           <p>{location?.address ?? 'Chưa có địa điểm'}</p>
         </div>
       </header>
-      <button type="button" className="secondary-button" onClick={onRefresh}>Làm mới</button>
+      {location === null ? (
+        <section className="section-block">
+          <SectionTitle title="Chọn đơn vị" subtitle="Bước 1" />
+          <p className="empty-inline">Chọn đơn vị để xem tình hình số thứ tự.</p>
+          <LocationPicker locations={locations} onSelect={onSelectLocation} />
+        </section>
+      ) : <button type="button" className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? 'Đang làm mới...' : 'Làm mới'}</button>}
       {loading ? <LoadingState label="Đang tải tình hình..." /> : null}
-      {queueStatus !== null ? (
-        <>
-          <section className="section-block">
-            <SectionTitle title="Danh sách quầy" subtitle="Quầy phục vụ" />
-            <div className="counter-list">
-              {queueStatus.counters.map((counter) => (
-                <article key={counter.counterId} className="counter-card">
-                  <strong>{counter.counterName}</strong>
-                  <span>{counter.status}</span>
-                  <span>Đang gọi: {counter.currentTicketNumber ?? 'Chưa có'}</span>
-                  <span>Dịch vụ: {counter.servingServiceName ?? 'Chưa phục vụ'}</span>
-                  <span>Cập nhật: {formatDateTime(counter.updatedAt)}</span>
-                </article>
-              ))}
-            </div>
-          </section>
-          <section className="section-block">
-            <SectionTitle title="Danh sách chờ" subtitle="Đang chờ" />
-            {queueStatus.waitingTickets.length === 0 ? <p>Chưa có vé chờ.</p> : queueStatus.waitingTickets.map((ticket) => <article key={ticket.ticketId} className="ticket-card"><strong>#{ticket.ticketNumber}</strong><span>{ticket.serviceName}</span><span>{ticket.status}</span></article>)}
-          </section>
-        </>
+      {!loading && location !== null && queueStatus?.counters.length === 0 ? <article className="empty-card"><p>Đơn vị chưa có quầy đang hoạt động.</p></article> : null}
+      {queueStatus !== null && queueStatus.counters.length > 0 ? (
+        <section className="section-block">
+          <SectionTitle title="Danh sách quầy" subtitle="Quầy phục vụ" />
+          <div className="counter-list">
+            {queueStatus.counters.map((counter) => (
+              <article key={counter.counterId} className="counter-card">
+                <strong>{counter.counterName} - {counter.serviceName}</strong>
+                <span>Trạng thái: {counter.status === 'OPEN' ? 'Đang hoạt động' : 'Tạm dừng'}</span>
+                <span>Đang làm việc: {counter.currentTicket === null ? 'Chưa có' : <b className={isMine(counter.currentTicket.ticketId) ? 'my-ticket' : ''}>#{counter.currentTicket.ticketNumber}{isMine(counter.currentTicket.ticketId) ? ' · Phiếu của bạn' : ''}</b>}</span>
+                <span>Tiếp theo: {counter.nextTicket === null ? 'Chưa có' : <b className={isMine(counter.nextTicket.ticketId) ? 'my-ticket' : ''}>#{counter.nextTicket.ticketNumber}{isMine(counter.nextTicket.ticketId) ? ' · Phiếu của bạn' : ''}</b>}</span>
+                <span>Số đang chờ: {counter.waitingCount}</span>
+                <button type="button" className="queue-toggle" aria-expanded={expandedCounters.has(counter.counterId)} onClick={() => setExpandedCounters((current) => {
+                  const next = new Set(current);
+                  if (next.has(counter.counterId)) next.delete(counter.counterId); else next.add(counter.counterId);
+                  return next;
+                })}>Danh sách chờ</button>
+                {expandedCounters.has(counter.counterId) ? (
+                  <div className="counter-waiting-list">
+                    {counter.waitingTickets.length === 0 ? <span>Chưa có số chờ.</span> : counter.waitingTickets.map((ticket) => (
+                      <span key={ticket.ticketId} className={isMine(ticket.ticketId) ? 'my-ticket' : ''}>#{ticket.ticketNumber}{isMine(ticket.ticketId) ? ' · Phiếu của bạn' : ''}</span>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        </section>
       ) : null}
     </section>
   );
@@ -510,6 +531,7 @@ export function App({ apiClient, initializeRuntime }: AppProps = {}) {
   const [fullName, setFullName] = useState('');
   const [bookingDate, setBookingDate] = useState(() => toLocalDateValue(new Date()));
   const bookingInFlight = useRef(false);
+  const queueInFlight = useRef(false);
   const requestController = useRef<AbortController | null>(null);
   const navigate = useCallback((nextScreen: Screen) => {
     window.history.pushState({ qmsScreen: nextScreen }, '', window.location.href);
@@ -575,8 +597,13 @@ export function App({ apiClient, initializeRuntime }: AppProps = {}) {
   }, [api, selectedLocation]);
 
   const loadQueue = useCallback(async (locationId: string) => {
+    if (queueInFlight.current) {
+      return;
+    }
+    queueInFlight.current = true;
     setLoading('queue');
     setError(null);
+    setQueueStatus(null);
     const matchedLocation = locations.find((item) => item.id === locationId) ?? null;
     setSelectedLocation(matchedLocation);
     try {
@@ -585,6 +612,7 @@ export function App({ apiClient, initializeRuntime }: AppProps = {}) {
     } catch (caught) {
       setError(mapApiError(caught, 'queue'));
     } finally {
+      queueInFlight.current = false;
       setLoading(null);
     }
   }, [api, locations]);
@@ -765,10 +793,16 @@ export function App({ apiClient, initializeRuntime }: AppProps = {}) {
           }}
           onGoQueue={() => {
             navigate('queue');
-            const locationId = selectedLocation?.id ?? locations[0]?.id;
-            if (locationId !== undefined) {
-              void loadQueue(locationId);
-            }
+            setQueueStatus(null);
+            void Promise.all(locations.map(async (location) => api.getCurrentBooking(location.id, requestController.current?.signal)))
+              .then((bookings) => {
+                const active = currentBooking ?? bookings.find((booking) => booking !== null) ?? null;
+                setCurrentBooking(active);
+                const activeLocation = active === null ? null : locations.find((item) => item.id === active.locationId) ?? null;
+                setSelectedLocation(activeLocation);
+                if (activeLocation !== null) void loadQueue(activeLocation.id);
+              })
+              .catch((caught) => setError(mapApiError(caught, 'queue')));
           }}
         />
       ) : null}
@@ -823,14 +857,18 @@ export function App({ apiClient, initializeRuntime }: AppProps = {}) {
           history={bookingHistory}
           loading={loading === 'history'}
           onBack={() => setScreen('home')}
+          onViewCurrent={() => navigate('current-booking')}
         />
       ) : null}
       {screen === 'queue' ? (
         <QueueScreen
+          locations={locations}
           location={selectedLocation}
           queueStatus={queueStatus}
+          currentTicketId={currentBooking?.ticketId ?? null}
           loading={loading === 'queue'}
           onBack={() => setScreen('home')}
+          onSelectLocation={(location) => void loadQueue(location.id)}
           onRefresh={() => {
             if (selectedLocation !== null) {
               void loadQueue(selectedLocation.id);
