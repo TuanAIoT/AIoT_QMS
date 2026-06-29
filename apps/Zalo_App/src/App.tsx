@@ -301,9 +301,15 @@ function BookingScreen({
         {!loadingArea && areaError === null && areas.length === 0 ? <p className="empty-inline">Chưa có lĩnh vực khả dụng.</p> : null}
         <div className="service-list">
           {areas.map((area) => (
-            <button key={area.id} type="button" className={`service-card ${selectedAreaId === area.id ? 'selected' : ''}`} onClick={() => onSelectArea(area.id)}>
-              <span className="service-copy"><strong>{area.name}</strong></span>
-              <span>{selectedAreaId === area.id ? 'Đã chọn' : 'Chọn'}</span>
+            <button
+              key={area.id}
+              type="button"
+              className={`area-card ${selectedAreaId === area.id ? 'selected' : ''}`}
+              onClick={() => onSelectArea(area.id)}
+              aria-pressed={selectedAreaId === area.id}
+            >
+              <strong className="area-name">{area.name}</strong>
+              <span className="area-action">{selectedAreaId === area.id ? 'Đã chọn' : 'Chọn'}</span>
             </button>
           ))}
         </div>
@@ -728,19 +734,22 @@ export function App({ apiClient, initializeRuntime }: AppProps = {}) {
     }
   }, [error, loadAreas, loadHistory, loadLocations, loadQueue, loadServices, selectedAreaId, selectedLocation]);
 
+  const runtimeMessage =
+    runtimeState.phase === 'initializing'
+      ? 'Đang khởi tạo...'
+      : runtimeState.phase === 'ready' && runtimeState.runtime === 'browser-development'
+        ? 'Chế độ phát triển trình duyệt'
+        : runtimeState.phase === 'configuration-error'
+          ? 'Cấu hình Zalo Mini App chưa đầy đủ'
+          : null;
+
   return (
     <main className="app-shell">
-      <section className="runtime-strip" aria-label="Trạng thái runtime">
-        {runtimeState.phase === 'initializing'
-          ? 'Đang khởi tạo...'
-          : runtimeState.phase === 'ready' && runtimeState.runtime === 'browser-development'
-            ? 'Chế độ phát triển trình duyệt'
-            : runtimeState.phase === 'ready'
-              ? 'Đang chạy trong Zalo Mini App'
-              : runtimeState.phase === 'configuration-error'
-                ? 'Cấu hình Zalo Mini App chưa đầy đủ'
-                : 'Không hỗ trợ runtime hiện tại'}
-      </section>
+      {runtimeMessage === null ? null : (
+        <section className="runtime-strip" aria-label="Trạng thái runtime">
+          {runtimeMessage}
+        </section>
+      )}
       {error !== null && error.retryTarget !== 'areas' && error.retryTarget !== 'services'
         ? <ErrorBanner error={error} onRetry={retry} />
         : null}

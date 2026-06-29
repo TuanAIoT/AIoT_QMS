@@ -178,6 +178,7 @@ select {
 
 .section-block {
   margin-top: 18px;
+  min-width: 0;
 }
 
 .section-heading {
@@ -240,6 +241,7 @@ select {
 .flow-screen {
   display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .screen-header {
@@ -288,6 +290,8 @@ select {
 .waiting-list {
   display: grid;
   gap: 12px;
+  width: 100%;
+  min-width: 0;
 }
 
 .location-card {
@@ -361,6 +365,41 @@ select {
 .empty-inline {
   margin: 4px 0;
   color: #5d6c82;
+}
+
+.area-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+  min-height: 76px;
+  border: 1px solid #dfe8f4;
+  padding: 16px;
+  color: #102033;
+  background: #f8fbff;
+}
+
+.area-card.selected {
+  border-color: #0068ff;
+  background: #edf4ff;
+  box-shadow: 0 6px 18px rgb(0 104 255 / 14%);
+}
+
+.area-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.area-action {
+  flex: 0 0 auto;
+  color: #0068ff;
+  white-space: nowrap;
 }
 
 .service-card {
@@ -590,6 +629,7 @@ select {
   .hero-banner,
   .info-card,
   .location-card,
+  .area-card,
   .service-card,
   .ticket-list-card,
   .screen-header {

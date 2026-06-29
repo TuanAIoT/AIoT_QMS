@@ -270,6 +270,44 @@ describe('Zalo App booking flow', () => {
     expect(document.body.textContent?.toUpperCase()).not.toContain('BƯỚC');
   });
 
+  it('renders area options as full-card buttons and applies selected state', async () => {
+    const api = createApi();
+    renderApp(api);
+    fireEvent.click(await screen.findByRole('button', { name: /Đặt số trực tuyến/ }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(LOCATIONS[0]!.locationName) }));
+    const areaButton = await screen.findByRole('button', { name: new RegExp(AREAS[0]!.areaName) });
+    const areaName = areaButton.querySelector('.area-name');
+
+    expect(areaButton.classList.contains('area-card')).toBe(true);
+    expect(areaButton.classList.contains('service-card')).toBe(false);
+    expect(areaButton.className).not.toMatch(/grid|break-all/i);
+    expect(areaName?.textContent).toBe(AREAS[0]!.areaName);
+    fireEvent.click(areaButton);
+    await waitFor(() => expect(areaButton.classList.contains('selected')).toBe(true));
+    expect(areaButton.getAttribute('aria-pressed')).toBe('true');
+    expect(api.getServices).toHaveBeenCalledWith('loc-001', 'area-justice', expect.any(AbortSignal));
+  });
+
+  it('hides non-blocking runtime banners in a valid Zalo runtime', async () => {
+    render(
+      <StrictMode>
+        <App
+          apiClient={createApi()}
+          initializeRuntime={async () => ({ phase: 'ready', runtime: 'zalo-mini-app' })}
+        />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByRole('heading', { name: APP_NAME })).toBeTruthy();
+    expect(screen.queryByLabelText('Trạng thái runtime')).toBeNull();
+    expect(document.body.textContent).not.toContain('Không hỗ trợ runtime hiện tại');
+  });
+
+  it('keeps the browser development runtime indicator', async () => {
+    renderApp();
+    expect(await screen.findByText('Chế độ phát triển trình duyệt')).toBeTruthy();
+  });
+
   it('shows service schema errors in the service section', async () => {
     const api = createApi({
       getServices: vi.fn(async () => {
